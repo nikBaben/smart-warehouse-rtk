@@ -1,7 +1,9 @@
 <h1 align="center">🤖 Smart Warehouse RTK</h1>
 
 <p align="center">
-  <i>Интеллектуальная система оптимизации складских процессов на основе RTK и AI</i><br><br>
+  <i>"Умный склад - система управления
+складской логистикой с использованием автономных
+роботов"</i><br><br>
   <img src="https://img.shields.io/badge/Python-3.10-blue?logo=python" />
   <img src="https://img.shields.io/badge/React-18.2.0-61DAFB?logo=react" />
   <img src="https://img.shields.io/badge/Redux%20Toolkit-RTK%20Query-764ABC?logo=redux" />
