@@ -1,4 +1,5 @@
-<h1 align="center">🤖 Smart Warehouse RTK</h1>
+<h1 align="center"><img width="512" height="512" alt="image" src="https://github.com/user-attachments/assets/c3474644-1a61-4c39-8406-745bd7b85e7b" />
+ Smart Warehouse RTK</h1>
 
 <p align="center">
   <i>"Умный склад - система управления
@@ -6,15 +7,14 @@
 роботов"</i><br><br>
   <img src="https://img.shields.io/badge/Python-3.10-blue?logo=python" />
   <img src="https://img.shields.io/badge/React-18.2.0-61DAFB?logo=react" />
-  <img src="https://img.shields.io/badge/Redux%20Toolkit-RTK%20Query-764ABC?logo=redux" />
-  <img src="https://img.shields.io/badge/License-MIT-green" />
 </p>
 
 ---
 
 ## 🧭 О проекте
 
-**Smart Warehouse RTK** — это инновационное решение, созданное для участия в кейс-чемпионате  
+**Smart Warehouse RTK** — это решение для кейс-чемпионата "Расти в ИТ".  
+Проект направлен на автоматизацию и повышение эффективности управления складом с использованием **RTK-технологий, анализа данных** и **AI-моделей** для прогнозирования и оптимизации логистических процессов. 
 [📂 Ссылка на кейс](https://drive.google.com/drive/u/0/folders/16xJ4XcN_ipFjO-VJEkBTMvxk1MhP9xqA)
 
 Система объединяет **данные RTK-устройств**, **машинное обучение** и **умный интерфейс**, чтобы:
@@ -32,7 +32,7 @@
 
 ---
 
-## 🏗 Архитектура системы
+## 🏗 Архитектура проекта
 
 <p align="center">
   <img src="./docs/architecture.png" width="800" alt="System Architecture">
@@ -51,29 +51,23 @@
 
 | Категория | Технологии |
 |------------|-------------|
-| 💻 Frontend | React, Redux Toolkit, RTK Query, Tailwind |
+| 💻 Frontend | React, TypeScript, Vite, shadcn |
 | ⚙️ Backend | FastAPI, SQLAlchemy |
-| 🧠 Data & ML | Pandas, Scikit-learn, PyTorch |
+| 🧠 Data & ML | Pandas, PyTorch |
 | 🗄 Database | PostgreSQL |
-| 🧰 DevOps | Docker, GitHub Actions, Render / Railway |
-| 📊 Visuals | Plotly, Chart.js |
+| 🧰 DevOps | Docker, GitHub Actions|
 
 ---
 
-## 🚀 Быстрый старт
+## 🧠 Команда проекта
 
-```bash
-# 1️⃣ Клонируем репозиторий
-git clone https://github.com/nikBaben/smart-warehouse-rtk.git
-cd smart-warehouse-rtk
+| Участник | Роль | Контакты |
+|-----------|------|-----------|
+| Никита  | Backend | [GitHub](https://github.com/nikBaben) |
+| Матвей | Data Scientist | … |
+| Вадим | Backend Developer | … |
+| Александр | Designer | … |
+| Захар | Designer | … |
 
-# 2️⃣ Устанавливаем зависимости
-pip install -r requirements.txt
+---
 
-# 3️⃣ Запускаем backend
-python src/backend/main.py
-
-# 4️⃣ Запускаем frontend
-cd src/frontend
-npm install
-npm start
