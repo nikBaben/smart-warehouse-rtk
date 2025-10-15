@@ -2,8 +2,7 @@
   <img src="./docs/banner.webp" alt="Smart Warehouse RTK banner" width="100%" />
 </p>
 
-<h1 align="center"><img width="512" height="512" alt="image" src="https://github.com/user-attachments/assets/c3474644-1a61-4c39-8406-745bd7b85e7b" />
- Smart Warehouse RTK</h1>
+<h1 align="center">🏭Smart Warehouse RTK</h1>
 
 <p align="center">
   <i>"Умный склад - система управления
