@@ -2,7 +2,7 @@
   <img src="./docs/banner1.png" alt="Smart Warehouse RTK banner" width="100%" />
 </p>
 
-<h1 align="center">🏭Smart Warehouse RTK</h1>
+<h1 align="center">🏭RTK Smart Warehouse</h1>
 
 <p align="center">
   <i>"Умный склад - система управления
