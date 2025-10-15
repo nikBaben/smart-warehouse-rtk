@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/banner.webp" alt="Smart Warehouse RTK banner" width="100%" />
+  <img src="./docs/banner1.png" alt="Smart Warehouse RTK banner" width="100%" />
 </p>
 
 <h1 align="center">🏭Smart Warehouse RTK</h1>
