@@ -61,10 +61,10 @@
 | Участник | Роль | Контакты |
 |-----------|------|-----------|
 | Никита  | Backend | [GitHub](https://github.com/nikBaben) |
-| Матвей | Data Scientist | … |
-| Вадим | Backend Developer | … |
-| Александр | Designer | … |
-| Захар | Designer | … |
+| Матвей | Frontend | … |
+| Вадим | Frontend | … |
+| Александр | Backend | … |
+| Захар | Backend | … |
 
 ---
 
