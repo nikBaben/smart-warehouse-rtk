@@ -1,0 +1,29 @@
+# pyproject.toml
+[project]
+name = "smart-warehouse-backend"
+version = "1.0.0"
+description = "Smart Warehouse Backend with Keycloak 26 Auth"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "python-keycloak>=5.0.0",
+    "python-multipart>=0.0.6",
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "cryptography>=41.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "python-jose>=3.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
