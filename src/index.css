@@ -1,0 +1,14 @@
+@import "tailwindcss/preflight";
+@import "tailwindcss/theme";
+@import "tailwindcss/utilities";
+
+@import "./assets/styles/fonts.css";
+
+body {
+  font-family: "RostelecomBasis", system-ui, sans-serif;
+  color: rgb(17 24 39);
+  background-color: rgb(249 250 251);
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
