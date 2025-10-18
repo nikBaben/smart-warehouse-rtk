@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16
+    container_name: myapp-db
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"   # внешний порт 5433 → внутренний 5432 (для подключения с хоста)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d myapp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .                   # собирает образ из твоего Dockerfile
+    container_name: myapp-api
+    working_dir: /app
+    env_file:
+      - .env                   # подхватывает твои переменные окружения
+    environment:
+      # ПЕРЕОПРЕДЕЛЯЕМ только адрес БД для контейнера:
+      # важно: host = db, порт = 5432 (внутренний порт сервиса Postgres)
+      DB_URL: postgresql+asyncpg://postgres:postgres@db:5432/myapp
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8001:8000"            # FastAPI доступен на localhost:8001 (в контейнере 8000)
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - ./:/app
+
+
+volumes:
+  pgdata:
