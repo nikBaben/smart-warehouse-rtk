@@ -11,6 +11,6 @@
 | **7. Deployment / DevOps уровень** | Не часть бизнес-кода, но важен для развёртывания и среды. | `Dockerfile`, `docker-compose.yml`, `.env`, `.gitignore`, `pyproject.toml` |
 
 <p align="center">
-  <img src="docs/docs/Visual_schema_backend.svg" alt="Схема архитектуры backend" width="100%" />
+  <img src="docs/Visual_schema_backend.svg" alt="Схема архитектуры backend" width="100%" />
 </p>
 
