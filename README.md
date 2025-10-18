@@ -10,4 +10,4 @@
 | **6. Entry point / Composition Root** | Точка входа, которая всё собирает: создаёт FastAPI-приложение, подключает маршруты, зависимости и настройки. | `app/main.py` |
 | **7. Deployment / DevOps уровень** | Не часть бизнес-кода, но важен для развёртывания и среды. | `Dockerfile`, `docker-compose.yml`, `.env`, `.gitignore`, `pyproject.toml` |
 
-![Архитектура проекта](docs/Schema.jpg)
+![Архитектура проекта](docs/Visual schema backend.svg)
