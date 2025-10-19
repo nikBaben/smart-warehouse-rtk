@@ -7,7 +7,7 @@ import { Header } from "@/components/ui/header";
 import { Footer } from "@/components/ui/footer";
   
 {/*вообще временная фигня, потом на нормальную маску поменяю*/}
-const AuthPage: React.FC = () => {
+function AuthPage(){
   const [role, setRole] = useState<"user" | "admin">("user");
   const [login, setLogin] = React.useState("");
 

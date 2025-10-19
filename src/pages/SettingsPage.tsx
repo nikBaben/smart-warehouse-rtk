@@ -1,4 +1,4 @@
-import {React, useState} from "react";
+import { useState} from "react";
 
 import { Navbar } from "@/components/ui/navbar";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import SignOut from '@atomaro/icons/24/navigation/SignOut';
 import CheckLarge from '@atomaro/icons/24/navigation/CheckLarge';
 import CloseLarge from '@atomaro/icons/24/navigation/CloseLarge';
 
-const SettingsPage: React.FC = () => {
+function SettingsPage(){
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
 

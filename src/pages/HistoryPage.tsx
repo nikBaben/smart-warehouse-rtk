@@ -1,6 +1,4 @@
-import {React} from "react";
-
-const HistoryPage: React.FC = () => {
+function HistoryPage(){
     return (
         <div className="flex bg-[#F4F4F5] min-h-screen">
             <div className="flex flex-col flex-1 overflow-hidden ml-[60px]">

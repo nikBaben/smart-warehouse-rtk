@@ -1,6 +1,5 @@
-import {React} from "react";
 
-const ListPage: React.FC = () => {
-
+function ListPage() {
+  return (<br/>)
 }
 export default ListPage;
