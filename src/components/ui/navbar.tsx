@@ -1,14 +1,15 @@
 import React from "react";
 import Logo from "/src/assets/logos/RTKlogo.svg";
 import Home from "@atomaro/icons/24/action/Home";
-import Pin from "@atomaro/icons/24/navigation/Pin";
+import History from '@atomaro/icons/24/communication/History';
 import MenuPlusBullets from "@atomaro/icons/24/navigation/MenuPlusBullets";
 import Settings from '@atomaro/icons/24/action/Settings';
 import Release from '@atomaro/icons/24/action/Release';
+import { Link, useLocation } from "react-router-dom";
 
 export function Navbar() {
   return (
-    <div className="w-[60px] h-screen bg-[#272F3D] flex flex-col items-center relative sticky">
+    <div className="w-[60px] h-screen bg-[#272F3D] flex flex-col items-center fixed top-0 left-0 z-[1000]">
       <div className="w-[25px] h-[60px] flex flex-col items-center justify-center">
         <a href="#/">
           <img src={Logo} alt="RTK" className="h-[40px] w-auto object-contain" />
@@ -19,15 +20,15 @@ export function Navbar() {
       />
       <div className="flex flex-col items-center w-[30px] h-[180px] justify-center gap-[30px]">
         <nav className="flex flex-col gap-[30px] items-center">
-          <NavItem icon={Home} label="Главная" />
-          <NavItem icon={Pin} label="Карта" />
-          <NavItem icon={MenuPlusBullets} label="Меню" />
+          <NavItem icon={Home} label="Главная" to="/"/>
+          <NavItem icon={History} label="Карта" to="/history" />
+          <NavItem icon={MenuPlusBullets} label="Меню" to="/list"/>
         </nav>
       </div>
       <div className="flex flex-col items-center absolute bottom-[20.15px]">
         <nav className="flex gap-[26px] flex-col">
-          <NavItem icon= {Settings} label="Настройки"/>
-          <NavItem icon= {Release} label="Выход"/>
+          <NavItem icon= {Settings} label="Настройки" to="/settings"/>
+          <NavItem icon= {Release} label="Выход" to="/auth"/>
         </nav>
       </div>
     </div>
@@ -37,20 +38,22 @@ export function Navbar() {
 const NavItem = ({
   icon: Icon,
   label,
-  active = false,
+  to,
 }: {
   icon: React.ElementType;
   label: string;
-  active?: boolean;
+  to: string;
 }) => {
-  const fillColor = active ? "#FFFFFF" : "#9CA3AF"; // gray-400 → white при активном
+  const location = useLocation();
+  const active = location.pathname === to;
+  const fillColor = active ? "#FFFFFF" : "#9CA3AF";
 
   return (
-    <button
-      className="transition-colors duration-200 hover:scale-110"
-      title={label}
-    >
-      <Icon fill={fillColor} className="hover:fill-white transition-colors duration-200 w-[30px] h-auto" />
-    </button>
+    <Link to={to} title={label} className="transition-transform hover:scale-110">
+      <Icon
+        fill={fillColor}
+        className="hover:fill-white transition-colors duration-200 w-[30px] h-auto"
+      />
+    </Link>
   );
 };
