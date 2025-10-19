@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field, conint, validator
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Название товара")
     category: str = Field(..., min_length=1, max_length=100, description="Категория товара")
-    min_stock: conint(ge=0) = Field(0, description="Минимальный запас товара на складе")
-    optimal_stock: conint(ge=0) = Field(100, description="Оптимальный запас товара на складе")
+    min_stock: conint(ge=0) = Field(0, description="Минимальный запас товара на складе") # type: ignore
+    optimal_stock: conint(ge=0) = Field(100, description="Оптимальный запас товара на складе") # type: ignore
 
     @validator("optimal_stock")
     def validate_stock(cls, v, values):

@@ -19,7 +19,7 @@ class Product(Base):
         index=True,
     )
 
-    warehouse: Mapped["Warehouse"] = relationship(
+    warehouse: Mapped["Warehouse"] = relationship( # type: ignore
         back_populates="products",
         lazy="joined",  
     )

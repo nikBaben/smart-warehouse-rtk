@@ -12,14 +12,14 @@ class Warehouse(Base):
     row_y:  Mapped[int] = mapped_column(Integer, default=0)
     products_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    products: Mapped[list["Product"]] = relationship(
+    products: Mapped[list["Product"]] = relationship( # type: ignore
         back_populates="warehouse",
         lazy="selectin", 
         cascade="all, delete-orphan",  
         passive_deletes=True,         
     )
 
-    robots: Mapped[list["Robot"]] = relationship(
+    robots: Mapped[list["Robot"]] = relationship( # type: ignore
         back_populates="warehouse",
         lazy="selectin", 
         cascade="all, delete-orphan", 
