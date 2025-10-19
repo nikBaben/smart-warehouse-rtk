@@ -1,5 +1,5 @@
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import Integer, String, DateTime, func
+from sqlalchemy.orm import Mapped, mapped_column,relationship
+from sqlalchemy import Integer, String, DateTime, func,ForeignKey
 from datetime import datetime
 
 from app.db.base import Base
@@ -14,6 +14,18 @@ class Robot(Base):
     current_zone: Mapped[str] = mapped_column(String)
     current_row: Mapped[int] = mapped_column(Integer, default=0)
     current_shelf: Mapped[int] = mapped_column(Integer, default=0)
+
+    warehouse_id: Mapped[str] = mapped_column(
+        String(50),
+        ForeignKey("warehouses.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    warehouse: Mapped["Warehouse"] = relationship(
+        back_populates="robots",
+        lazy="joined", 
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -13,11 +13,9 @@ class RobotService:
     async def create_robot(self, data: RobotCreate) -> Robot:
         robot_id = data.id or str(uuid4())
 
-        if data.id:
-            existing = await self.repo.get(robot_id)
-            if existing:
-                raise HTTPException(status_code=409, detail="Robot with this id already exists")
-
+        if data.warehouse_id is None or data.warehouse_id == "":
+            raise HTTPException(status_code=400, detail="warehouse_id is required")
+        
         try:
             robot = await self.repo.create(
                 id=robot_id,
@@ -26,6 +24,8 @@ class RobotService:
                 current_zone=data.current_zone,
                 current_row=data.current_row,
                 current_shelf=data.current_shelf,
+                warehouse_id=data.warehouse_id, 
+                check_warehouse_exists=True
             )
             return robot
 

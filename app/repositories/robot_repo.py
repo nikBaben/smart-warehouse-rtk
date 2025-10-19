@@ -2,7 +2,9 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+
 from app.models.robot import Robot
+from app.models.warehouse import Warehouse
 
 
 class RobotRepository:
@@ -18,7 +20,16 @@ class RobotRepository:
         current_zone: str,
         current_row: int,
         current_shelf: int,
+        warehouse_id: str,
+        check_warehouse_exists: bool = True,
     ) -> Robot:
+        if check_warehouse_exists:
+            exists = await self.session.scalar(
+                select(Warehouse.id).where(Warehouse.id == warehouse_id)
+            )
+            if not exists:
+                raise ValueError(f"Склад '{warehouse_id}' не найден")
+        
         robot = Robot(
             id=id,
             status=status,
@@ -26,7 +37,9 @@ class RobotRepository:
             current_zone=current_zone,
             current_row=current_row,
             current_shelf=current_shelf,
+            warehouse_id = warehouse_id
         )
+
         self.session.add(robot)
         try:
             await self.session.commit()
@@ -37,5 +50,6 @@ class RobotRepository:
         return robot
 
     async def get(self, id: str) -> Optional[Robot]:
-        res = await self.session.execute(select(Robot).where(Robot.id == id))
-        return res.scalar_one_or_none()
+        return await self.session.scalar(
+            select(Robot).where(Robot.id == id)
+        )

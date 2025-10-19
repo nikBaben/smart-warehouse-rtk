@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, Literal
 
-from pydantic import BaseModel, Field, conint, validator
+from pydantic import BaseModel, Field
 
 
 RobotStatus = Literal["idle", "busy", "charging", "error"] 
@@ -17,13 +17,14 @@ class RobotBase(BaseModel):
 
 class RobotCreate(RobotBase):
     id: Optional[str] = Field(None, description="Если не передашь — сгенерируем UUID")
+    warehouse_id: Optional[str] = Field(None, description="ID склада, к которому привязан робот")
   
-
 
 class RobotRead(RobotBase):
     id: str
-    created_at: datetime
+    warehouse_id: Optional[str]
     last_update: Optional[datetime] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True  
