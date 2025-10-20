@@ -13,8 +13,6 @@ import {
 	DialogTrigger,
 } from '@/components/ui/dialog'
 import Download from '@atomaro/icons/24/action/Download'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 
 
 
@@ -31,19 +29,19 @@ export function UploadCSV(){
 				<button title='Экспорт CSV' className='transition-transform'>
 					<Download
 						fill='#9CA3AF'
-						className='hover:fill-white transition-colors duration-200 w-[30px] h-auto'
+						className='hover:fill-white cursor-pointer transition-colors duration-200 w-[30px] h-auto'
 					/>
 				</button>
 			</DialogTrigger>
 			<DialogContent
 				className='max-w-[600px] bg-white text-black p-6 rounded-2xl'
-				onInteractOutside={e => e.preventDefault()} /* запрет на закрытие окна при нажатии на пустое пространство */
+				onInteractOutside={e =>
+					e.preventDefault()
+				} /* запрет на закрытие окна при нажатии на пустое пространство */
 			>
 				<DialogHeader>
 					<DialogTitle>Загрузить CSV</DialogTitle>
-					<DialogDescription>
-						Описание (заглушка)
-					</DialogDescription>
+					<DialogDescription>Описание (заглушка)</DialogDescription>
 				</DialogHeader>
 				<Dropzone
 					maxSize={1024 * 1024 * 10}

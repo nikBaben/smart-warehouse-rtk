@@ -20,3 +20,7 @@ body {
 .section-font{
   @apply font-semibold text-[24px] mb-2;
 }
+
+.dashboard-section-font{
+  @apply font-medium text-[18px];
+}

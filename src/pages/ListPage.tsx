@@ -61,7 +61,7 @@ function ListPage() {
 								<div className='grid w-full items-center gap-1'>
 									<Label
 										htmlFor='Адрес'
-										className='text-[20px] font-medium text-black'
+										className='dashboard-section-font'
 									>
 										Адрес
 									</Label>
@@ -84,16 +84,16 @@ function ListPage() {
 											size='icon'
 											aria-label='Submit'
 											className='
-		w-[22px] h-[22px] 
-		border border-[#CCCCCC] 
-		hover:border-[#7700FF]
-		rounded-[4px]
-		flex items-center justify-center
-		transition-all duration-200
-		hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
-	'
+												w-[22px] h-[22px] 
+												border border-[#CCCCCC] 
+												hover:border-[#7700FF]
+												rounded-[4px]
+												flex items-center justify-center
+												transition-all duration-200
+												hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
+											'
 										>
-											<AddSmall />
+											<AddSmall/>
 										</Button>
 									</div>
 
