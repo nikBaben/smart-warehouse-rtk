@@ -12,3 +12,11 @@ body {
   min-width: 320px;
   min-height: 100vh;
 }
+
+.pagename-font{
+  @apply font-bold text-black text-[26px];
+}
+
+.section-font{
+  @apply font-semibold text-[24px] mb-2;
+}
