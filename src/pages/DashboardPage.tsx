@@ -1,5 +1,4 @@
 import { useState} from "react";
-import { Navbar } from "@/components/ui/navbar";
 import { DataTable } from "@/components/ui/DataTable";
 import { RobotActivityChart } from "@/components/ui/RobotActivityChart";
 import { Button } from "@/components/ui/button";
@@ -175,7 +174,7 @@ function DashboardPage(){
 							</Button>
 						</div>
 					</header>
-					<main className='flex-1 p-4 overflow-auto'>
+					<main className="flex-1 overflow-auto pt-[70px] pl-[10px] pr-[10px] pb-[10px]">
 						<div className='grid grid-cols-[2fr_3fr] gap-6 h-full'>
 							<section className='bg-white rounded-[15px] p-[6px] flex flex-col'>
 								<h2 className='font-semibold text-[18px] mb-2'>Карта склада</h2>
