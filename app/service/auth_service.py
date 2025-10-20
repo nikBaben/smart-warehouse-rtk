@@ -1,7 +1,5 @@
-# app/auth/service.py
 import logging
 import httpx
-import uuid
 from typing import Dict, Any, Optional
 from keycloak import KeycloakOpenID
 from keycloak.exceptions import KeycloakError

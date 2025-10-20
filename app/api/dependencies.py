@@ -1,7 +1,6 @@
-# app/auth/dependencies.py
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.auth.service import auth_service
+from app.service.auth_service import auth_service
 import logging
 
 logger = logging.getLogger(__name__)

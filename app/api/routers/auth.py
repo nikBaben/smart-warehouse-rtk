@@ -1,9 +1,8 @@
-# app/api/routes.py
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timedelta
-from app.auth.service import auth_service
-from app.auth.models import LoginRequest, AuthResponse, UserInfo, RefreshRequest, TokenResponse
-from app.auth.dependencies import get_current_user, keycloak_auth_middleware
+from app.service.auth_service import auth_service
+from app.domain.schemas.auth import LoginRequest, AuthResponse, UserInfo, RefreshRequest, TokenResponse
+from app.api.dependencies import get_current_user, keycloak_auth_middleware
 
 # Создаем роутер
 router = APIRouter(prefix="/api/v1", tags=["auth"])

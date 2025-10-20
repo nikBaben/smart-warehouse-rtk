@@ -1,4 +1,3 @@
-# app/middleware.py
 from fastapi import Request, HTTPException, status
 import re
 
@@ -35,7 +34,7 @@ async def auth_middleware(request: Request, call_next):
 	token = auth_header.replace("Bearer ", "")
 
 	# Проверяем токен
-	from app.auth.service import auth_service
+	from app.service.auth_service import auth_service
 	if not await auth_service.validate_token_for_middleware(token):
 		raise HTTPException(
 			status_code=status.HTTP_401_UNAUTHORIZED,
