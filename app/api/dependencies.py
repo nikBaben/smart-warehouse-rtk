@@ -13,7 +13,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 	logger.info("Getting current user from token")
 
-	# Используем validate_token как в Go, а не validate_token_for_middleware
 	if not await auth_service.validate_token_internal(token):
 		logger.error("Token validation failed in get_current_user")
 		raise HTTPException(
@@ -39,7 +38,7 @@ async def keycloak_auth_middleware(credentials: HTTPAuthorizationCredentials = D
 
 	logger.info("Middleware token validation")
 
-	# Используем validate_token_for_middleware как в Go
+	# Используем validate_token_for_middleware
 	if not await auth_service.validate_token_for_middleware(token):
 		logger.error("Middleware token validation failed")
 		raise HTTPException(
