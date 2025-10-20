@@ -44,3 +44,7 @@ body {
   @apply shadow-none w-[10px] h-[10px] border-[0.5px] rounded-[2px] bg-[#F2F3F4] border-[#7700FF] data-[state=checked]:bg-[#F2F3F4]
   data-[state=checked]:text-[#7700FF] data-[state=checked]:border-[#7700FF] transition-colors duration-200 flex items-center justify-center
 }
+
+.dashboard-section-font{
+  @apply font-medium text-[18px];
+}
