@@ -23,7 +23,7 @@ class KeycloakAuthService:
 		)
 
 	async def login(self, email: str, password: str) -> Dict[str, Any]:
-		"""Аутентификация пользователя - аналог Go Login"""
+		"""Аутентификация пользователя"""
 		try:
 			logger.info(f"Attempting login for: {email}")
 
@@ -35,7 +35,7 @@ class KeycloakAuthService:
 
 			logger.info("Login successful")
 
-			# Получаем информацию о пользователе - как в Go
+			# Получаем информацию о пользователе
 			user_info = await self.get_user_info(token['access_token'])
 
 			return {
@@ -53,7 +53,7 @@ class KeycloakAuthService:
 			raise HTTPException(status_code=401, detail="Invalid credentials")
 
 	async def logout(self, refresh_token: str) -> bool:
-		"""Выход из системы - аналог Go Logout"""
+		"""Выход из системы"""
 		try:
 			self.keycloak_openid.logout(refresh_token)
 			return True
@@ -62,24 +62,21 @@ class KeycloakAuthService:
 			return False
 
 	async def get_user_info(self, token: str) -> Dict[str, Any]:
-		"""Получение информации о пользователе - аналог Go GetUserInfo"""
+		"""Получение информации о пользователе"""
 		try:
-			# Try to fetch user info directly
 			user_info = self.keycloak_openid.userinfo(token)
 			return user_info
 		except KeycloakError as e:
 			logger.warning(f"Direct userinfo failed: {e}, attempting token exchange")
 
-			# Attempt token exchange - как в Go
 			exchanged = await self._exchange_token(token)
 			exchanged_token = exchanged['access_token']
 
-			# Try again with exchanged token
 			user_info = self.keycloak_openid.userinfo(exchanged_token)
 			return user_info
 
 	async def refresh_token(self, refresh_token: str) -> Dict[str, Any]:
-		"""Обновление токена - аналог Go RefreshToken"""
+		"""Обновление токена"""
 		try:
 			return self.keycloak_openid.refresh_token(refresh_token)
 		except KeycloakError as e:
@@ -87,9 +84,8 @@ class KeycloakAuthService:
 			raise HTTPException(status_code=401, detail="Invalid refresh token")
 
 	async def validate_token_internal(self, token: str) -> bool:
-		"""Проверка валидности токена - аналог Go ValidateToken"""
+		"""Проверка валидности токена"""
 		try:
-			# Try backend client introspection - как в Go RetrospectToken
 			result = self.keycloak_openid.introspect(token)
 			is_active = result.get('active', False)
 
@@ -99,11 +95,9 @@ class KeycloakAuthService:
 			else:
 				logger.warning("Token is not active, attempting token exchange")
 
-				# Attempt token exchange - как в Go
 				exchanged = await self._exchange_token(token)
 				exchanged_token = exchanged['access_token']
 
-				# Validate again with backend client
 				result = self.keycloak_openid.introspect(exchanged_token)
 				return result.get('active', False)
 
@@ -112,11 +106,10 @@ class KeycloakAuthService:
 			return False
 
 	async def validate_token_for_middleware(self, token: str) -> bool:
-		"""Проверка токена для middleware - аналог Go ValidateTokenForMiddleware"""
+		"""Проверка токена для middleware"""
 		logger.info("Starting middleware token validation")
 
 		try:
-			# Try backend client introspection
 			result = self.keycloak_openid.introspect(token)
 
 			if result and result.get('active', False):
@@ -125,11 +118,9 @@ class KeycloakAuthService:
 			else:
 				logger.warning("Token not active in middleware, attempting exchange")
 
-				# Attempt token exchange
 				exchanged = await self._exchange_token(token)
 				exchanged_token = exchanged['access_token']
 
-				# Validate again with backend client
 				result = self.keycloak_openid.introspect(exchanged_token)
 				is_active = result and result.get('active', False)
 
