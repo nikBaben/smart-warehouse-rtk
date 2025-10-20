@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import SignOut from '@atomaro/icons/24/navigation/SignOut';
 import CheckLarge from '@atomaro/icons/24/navigation/CheckLarge';
 import CloseLarge from '@atomaro/icons/24/navigation/CloseLarge';
-import { Notification } from "@/components/ui/Notifications";
+import { Notification } from "@/components/widgets/Notifications";
 
 function SettingsPage(){
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -16,15 +16,15 @@ function SettingsPage(){
     return (
         <div className="flex bg-[#F4F4F5] min-h-screen">
             <div className="flex flex-col flex-1 overflow-hidden ml-[60px]">
-                <header className="bg-white h-[60px] flex items-center px-[14px] z-10">
-                    <span className="pagename-font">Параметры и уведомления</span>
+                <header className="page-header px-[74px]">
+                    <span className="page-name">Параметры и уведомления</span>
                 </header>
                 <main className="flex-1 pt-[70px] pl-[10px] pr-[10px] pb-[10px]">
                     <div className="grid grid-cols-2 gap-6 justify-between">
                         <section className="flex flex-col gap-[10px]">
                             <div className="bg-white rounded-[15px] p-[10px] h-[70px] flex justify-between">
                                 <div className="flex items-center gap-[10px]">
-                                    <div className="w-[48px] h-[48px] rounded-full bg-gray-200 flex items-center justify-center">
+                                    <div className="avatar">
                                         <span className="text-gray-500 text-2xl font-medium">А</span>
                                     </div>
                                     <div className="flex flex-col text-black">
@@ -39,25 +39,25 @@ function SettingsPage(){
                                 <h2 className="font-medium text-[24px] mb-[15px]">Профиль и настройки</h2>
                                 <div className="flex flex-col gap-[15px]">
                                     <div className="flex flex-col">
-                                        <span className="text-[20px] font-medium">Имя</span>
-                                        <Input className="h-[52px] w-full shadow-none border-none bg-[#F2F3F4] placeholder:font-medium placeholder:text-[18px] placeholder:leading-[24px] !text-[18px] !leading-[24px] !text-[#000000] !font-medium gap-[10px]"></Input>
+                                        <span className="section-title">Имя</span>
+                                        <Input className="input"></Input>
                                     </div>
                                     <div className="flex flex-col">
-                                        <span className="text-[20px] font-medium">Фамилия</span>
-                                        <Input className="h-[52px] w-full shadow-none border-none bg-[#F2F3F4] placeholder:font-medium placeholder:text-[18px] placeholder:leading-[24px] !text-[18px] !leading-[24px] !text-[#000000] !font-medium gap-[10px]"></Input>
+                                        <span className="section-title">Фамилия</span>
+                                        <Input className="input"></Input>
                                     </div>
                                     <div className="flex flex-col">
-                                        <span className="text-[20px] font-medium mb-[-10px]">Логин</span>
+                                        <span className="section-title mb-[-10px]">Логин</span>
                                         <span className="text-[12px] font-medium text-[#BBBBBB] leading-[24px]">Укажите свою почту или номер телефона, чтобы мы могли Вас идентифицировать</span>
-                                        <Input className="h-[52px] w-full shadow-none border-none bg-[#F2F3F4] placeholder:font-medium placeholder:text-[18px] placeholder:leading-[24px] !text-[18px] !leading-[24px] !text-[#000000] !font-medium gap-[10px]"></Input>
+                                        <Input className="input"></Input>
                                     </div>
                                     <div className="flex flex-col">
-                                        <span className="text-[20px] mb-[-10px] font-medium">Почта для отправки отчётов</span>
+                                        <span className="section-title mb-[-10px]">Почта для отправки отчётов</span>
                                         <span className="text-[12px] font-medium text-[#BBBBBB] leading-[24px]">Сюда мы будем отправлять Вам отчеты о проверках</span>
                                         <Input className="h-[52px] w-full shadow-none border-none bg-[#F2F3F4] placeholder:font-medium placeholder:text-[18px] placeholder:leading-[24px] !text-[18px] !leading-[24px] !text-[#000000] !font-medium gap-[10px]"></Input>
                                     </div>
                                     <div className="relative">
-                                        <span className="text-[20px] font-medium">Роль</span>
+                                        <span className="section-title">Роль</span>
                                         <Button
                                             className="w-full h-[52px] border-none rounded-[10px] text-[18px] bg-[#F2F3F4] flex justify-between"
                                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}

@@ -1,10 +1,10 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { Navbar } from "@/components/ui/navbar";
-import  AuthPage  from "./pages/AuthPage";
-import SettingsPage from "./pages/SettingsPage";
-import DashboardPage from "./pages/DashboardPage";
-import HistoryPage from "./pages/HistoryPage";
-import ListPage from "./pages/ListPage";
+import { Navbar } from "@/components/widgets/navbar";
+import  AuthPage  from "../components/pages/AuthPage";
+import SettingsPage from "../components/pages/SettingsPage";
+import DashboardPage from "../components/pages/DashboardPage";
+import HistoryPage from "../components/pages/HistoryPage";
+import ListPage from "../components/pages/ListPage";
 
 function App() {
   return (

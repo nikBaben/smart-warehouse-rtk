@@ -1,5 +1,5 @@
 import React from "react";
-import { Button } from "./button";
+import { Button } from "../ui/button";
 import CheckLarge from "@atomaro/icons/24/navigation/CheckLarge";
 import CloseLarge from "@atomaro/icons/24/navigation/CloseLarge";
 

@@ -1,5 +1,5 @@
 import { React, useState } from "react";
-import UploadCSV from "./UploadCSV";
+import UploadCSV from "../ui/UploadCSV";
 import Logo from "/src/assets/logos/RTKlogo.svg";
 import Home from "@atomaro/icons/24/action/Home";
 import History from '@atomaro/icons/24/communication/History';
@@ -7,7 +7,7 @@ import MenuPlusBullets from "@atomaro/icons/24/navigation/MenuPlusBullets";
 import Settings from '@atomaro/icons/24/action/Settings';
 import Release from '@atomaro/icons/24/action/Release';
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ExitDialogue } from "./exitDialogue";
+import { ExitDialogue } from "./ExitDialogue";
 
 export function Navbar() {
 	const [showExit, setShowExit] = useState(false);

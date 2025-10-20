@@ -20,3 +20,27 @@ body {
 .section-font{
   @apply font-semibold text-[24px] mb-2;
 }
+.input {
+  @apply h-[52px] w-full shadow-none border-none bg-[#F2F3F4] placeholder:font-medium placeholder:text-[18px] placeholder:leading-[24px] !text-[18px] !leading-[24px] !text-[#000000] !font-medium gap-[10px];
+}
+
+.section-title {
+  @apply text-[20px] font-medium;
+}
+
+.avatar {
+  @apply w-[48px] h-[48px] rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-2xl font-medium;
+}
+
+.page-header {
+  @apply bg-white h-[60px] w-full flex items-center fixed top-0 left-0 z-[300];
+}
+
+.page-name {
+  @apply font-bold text-black text-[24px]
+}
+
+.history-checkbox {
+  @apply shadow-none w-[10px] h-[10px] border-[0.5px] rounded-[2px] bg-[#F2F3F4] border-[#7700FF] data-[state=checked]:bg-[#F2F3F4]
+  data-[state=checked]:text-[#7700FF] data-[state=checked]:border-[#7700FF] transition-colors duration-200 flex items-center justify-center
+}
