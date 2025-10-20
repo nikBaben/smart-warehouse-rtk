@@ -1,5 +1,4 @@
 import { useState} from "react";
-import { Navbar } from "@/components/ui/navbar";
 import { DataTable } from "@/components/ui/DataTable";
 import { RobotActivityChart } from "@/components/ui/RobotActivityChart";
 import { Button } from "@/components/ui/button";
@@ -128,7 +127,7 @@ function DashboardPage(){
     return (
 			<div className='flex bg-[#F4F4F5] min-h-screen'>
 				<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
-					<header className='bg-white h-[60px] flex items-center px-[14px] z-10'>
+					<header className="bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-[300]">
 						<span className='font-bold text-black text-[24px]'>Дашборд</span>
 
 						<div className='ml-auto flex items-center gap-4'>
@@ -175,7 +174,7 @@ function DashboardPage(){
 							</Button>
 						</div>
 					</header>
-					<main className='flex-1 p-4 overflow-auto'>
+					<main className="flex-1 overflow-auto pt-[70px] pl-[10px] pr-[10px] pb-[10px]">
 						<div className='grid grid-cols-[2fr_3fr] gap-6 h-full'>
 							<section className='bg-white rounded-[15px] p-[6px] flex flex-col'>
 								<h2 className='font-semibold text-[18px] mb-2'>Карта склада</h2>
