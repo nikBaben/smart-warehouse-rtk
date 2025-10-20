@@ -1,6 +1,6 @@
 import React from "react";
 import { RefreshCw } from "lucide-react";
-import { Button } from "./button.tsx"
+import { Button } from "../ui/button";
 import Refresh from '@atomaro/icons/24/action/Refresh';
 
 interface ForecastItem {

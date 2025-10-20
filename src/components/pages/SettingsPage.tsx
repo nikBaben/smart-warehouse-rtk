@@ -16,7 +16,7 @@ function SettingsPage(){
     return (
         <div className="flex bg-[#F4F4F5] min-h-screen">
             <div className="flex flex-col flex-1 overflow-hidden ml-[60px]">
-                <header className="page-header px-[74px]">
+                <header className="bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-[300]">
                     <span className="page-name">Параметры и уведомления</span>
                 </header>
                 <main className="flex-1 pt-[70px] pl-[10px] pr-[10px] pb-[10px]">

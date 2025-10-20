@@ -1,7 +1,7 @@
 'use client';
 import { Dropzone, DropzoneContent, DropzoneEmptyState } from '@/components/ui/shadcn-io/dropzone';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button'
+import { Button } from '../ui/button';
 import {
 	Dialog,
 	DialogClose,
