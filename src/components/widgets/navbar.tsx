@@ -1,4 +1,4 @@
-import { React, useState } from "react";
+import { useState } from "react";
 import UploadCSV from "./UploadCSV";
 import Logo from "/src/assets/logos/RTKlogo.svg";
 import Home from "@atomaro/icons/24/action/Home";
