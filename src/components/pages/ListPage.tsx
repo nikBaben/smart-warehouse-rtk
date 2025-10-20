@@ -1,69 +1,82 @@
 import { useEffect, useState } from 'react'
+import axios from 'axios'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import AddSmall from '@atomaro/icons/24/action/AddSmall'
 
-type Warehouse = {
+// 🔹 Тип данных склада (адаптирован под API)
+/* type Warehouse = {
+	name: string
+	adress: string
+	products_count: number
+} */
+
+/* type WhRobot = {
+	status: string
 	id: string
-	city: string
-	itemsCount: number
-	robots: { id: string; charge: number; status: string }[]
-	products: { name: string; status: string; quantity: number }[]
+	battery_level: number
+} */
+
+/* type WhProduct = {
+	name: string
+	warehouse_id: string
+	optimal_stock: number
+} */
+
+type Warehouse = {
+	name: string
+	adress: string
+	products_count: number
+	robots: {
+		id: string
+		status: string
+		battery_level: number
+		current_zone: string
+	}[]
+	products: {
+		id: string
+		name: string
+		category: string
+		optimal_stock: number
+		min_stock: number
+	}[]
 }
 
 function ListPage() {
+	//-----ОБРАБОТКА СОСТОЯНИЙ-----
 	const [warehouses, setWarehouses] = useState<Warehouse[]>([])
+	const [loading, setLoading] = useState(false)
+	const [error, setError] = useState<string | null>(null)
 	const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(
 		null
 	)
 
-	//Заглушка для теста (позже заменишь на fetch)
+	//-----ЗАГРУЗКА СПИСКА СКЛАДОВ-----
 	useEffect(() => {
-		setWarehouses([
-			{
-				id: 'YNDX-923212349',
-				city: 'Уфа',
-				itemsCount: 1432,
-				robots: [
-					{ id: 'ID-1032', charge: 75, status: 'активен' },
-					{ id: 'ID-1099', charge: 58, status: 'на подзарядке' },
-				],
-				products: [
+		const fetchWarehouses = async () => {
+			try {
+				const response = await axios.get(
+					'http://51.250.97.137:8001/api/v1/warehouse/all',
 					{
-						name: 'Apple iPhone 17 Pro Max - 012034',
-						status: 'низкий остаток',
-						quantity: 20,
-					},
-					{
-						name: 'Samsung Galaxy S25 Ultra',
-						status: 'в наличии',
-						quantity: 144,
-					},
-				],
-			},
-			{
-				id: 'YNDX-923212350',
-				city: 'Москва',
-				itemsCount: 980,
-				robots: [{ id: 'ID-2031', charge: 90, status: 'активен' }],
-				products: [
-					{ name: 'Xiaomi 15 Pro', status: 'в наличии', quantity: 300 },
-				],
-			},
-		])
+						headers: { 'Content-Type': 'application/json' },
+					}
+				)
+				console.log('Ответ сервера:', response.data)
+				setWarehouses(response.data)
+			} catch (err) {
+				console.error('Ошибка загрузки:', err)
+				setError('Не удалось загрузить склады')
+			}
+		}
+
+		fetchWarehouses()
 	}, [])
 
-	// 📡 Здесь ты потом заменишь на реальный запрос к API
-	// useEffect(() => {
-	//   fetch("/api/warehouses")
-	//     .then((res) => res.json())
-	//     .then(setWarehouses)
-	//     .catch(console.error);
-	// }, []);
-
 	const handleSelect = (warehouse: Warehouse) => {
-		setSelectedWarehouse(prev => (prev?.id === warehouse.id ? null : warehouse))
+		setSelectedWarehouse(prev =>
+			prev?.name === warehouse.name ? null : warehouse
+		)
 	}
 
 	return (
@@ -75,33 +88,32 @@ function ListPage() {
 
 				<main className='flex-1 p-3 h-full'>
 					<div className='grid grid-cols-24 gap-3 justify-between h-full'>
-						{/* ====== Список складов ====== */}
 						<section className='bg-white rounded-[15px] col-span-10 h-full p-[10px] overflow-y-auto'>
 							<h2 className='big-section-font mb-3'>Список складов</h2>
 
 							<div className='space-y-2'>
 								{warehouses.map(wh => (
 									<div
-										key={wh.id}
+										key={wh.name}
 										onClick={() => handleSelect(wh)}
-										className={`flex justify-between items-center bg-[#F2F3F4] max-h-[52px] rounded-[15px] px-[10px] py-[10px] cursor-pointer transition-all border-[2px]
-                    ${
-											selectedWarehouse?.id === wh.id
-												? 'border-[2px] border-[#7700FF] shadow-[0_0_10px_rgba(119,0,255,0.3)]'
-												: 'border border-transparent hover:border-[2px] hover:border-[#7700FF33] hover:shadow-[0_0_10px_rgba(119,0,255,0.3)]'
-										}`}
+										className={`flex justify-between items-center bg-[#F2F3F4] rounded-[15px] max-h-[60px] px-[10px] py-[10px] cursor-pointer transition-all border-[2px]
+												${
+													selectedWarehouse?.name === wh.name
+														? 'border-[2px] border-[#7700FF] shadow-[0_0_10px_rgba(119,0,255,0.3)]'
+														: 'border border-transparent hover:border-[2px] hover:border-[#7700FF33] hover:shadow-[0_0_10px_rgba(119,0,255,0.3)]'
+												}`}
 									>
 										<div className='flex items-center'>
 											<span className='text-[20px] font-medium text-black'>
-												{wh.id}
+												{wh.name}
 											</span>
 										</div>
 										<div className='text-right space-y-0'>
 											<div className='text-[14px] font-normal text-[#5A606D]'>
-												город: {wh.city}
+												город: {wh.adress}
 											</div>
 											<div className='text-[14px] font-normal text-[#5A606D]'>
-												текущее количество товаров: {wh.itemsCount}
+												текущее количество товаров: {wh.products_count}
 											</div>
 										</div>
 									</div>
@@ -109,7 +121,6 @@ function ListPage() {
 							</div>
 						</section>
 
-						{/* ====== Панель подробностей ====== */}
 						<section className='bg-white rounded-[15px] col-span-14 h-full p-[10px] space-y-5'>
 							<h2 className='big-section-font'>Подробная информация о складе</h2>
 
@@ -130,7 +141,7 @@ function ListPage() {
 											type='text'
 											id='name'
 											className='bg-[#F2F3F4] h-[52px] rounded-[15px] !text-[20px] font-medium'
-											value={selectedWarehouse.id}
+											value={selectedWarehouse.name}
 											readOnly
 										/>
 									</div>
@@ -140,13 +151,13 @@ function ListPage() {
 											htmlFor='address'
 											className='text-[20px] font-medium text-black'
 										>
-											Город
+											Адрес
 										</Label>
 										<Input
 											type='text'
 											id='address'
 											className='bg-[#F2F3F4] h-[52px] rounded-[15px] !text-[20px] font-medium'
-											value={selectedWarehouse.city}
+											value={selectedWarehouse.adress}
 											readOnly
 										/>
 									</div>
@@ -180,7 +191,7 @@ function ListPage() {
 														{robot.id}
 													</span>
 													<div className='text-right text-[#5A606D] text-[14px]'>
-														<div>заряд: {robot.charge}%</div>
+														<div>заряд: {robot.battery_level}%</div>
 														<div>статус: {robot.status}</div>
 													</div>
 												</div>
@@ -218,8 +229,8 @@ function ListPage() {
 														{p.name}
 													</span>
 													<div className='text-right text-[#5A606D] text-[14px]'>
-														<div>статус: {p.status}</div>
-														<div>количество: {p.quantity} шт</div>
+														<div>статус: {p.category}</div>
+														<div>количество: {p.optimal_stock} шт</div>
 													</div>
 												</div>
 											))}
