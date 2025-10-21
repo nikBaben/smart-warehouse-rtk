@@ -18,8 +18,7 @@ class WarwehouseService:
                 id=Warehouse_id,
                 name=data.name,
                 address=data.address,
-                row_x=data.row_x,
-                row_y=data.row_y
+                max_products = data.max_products
             )
             return robot
 

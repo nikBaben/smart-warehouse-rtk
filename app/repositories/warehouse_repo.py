@@ -17,8 +17,7 @@ class WarehouseRepository:
         id: str,
         name: str,
         address: str,
-        row_x: int,
-        row_y: int,
+        max_products: int
     ) -> Warehouse:
         existing_warehouse = await self.session.scalar(
             select(Warehouse).where(Warehouse.name == name)
@@ -30,8 +29,7 @@ class WarehouseRepository:
             id=id,
             name=name,
             address=address,
-            row_x=row_x,
-            row_y=row_y,
+            max_products = max_products,
             products_count = 0
         )
 

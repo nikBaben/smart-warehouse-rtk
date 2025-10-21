@@ -6,8 +6,7 @@ from app.schemas.robot import RobotRead
 class WarehouseBase(BaseModel):
     name: str = Field(..., max_length=255)
     address: str = Field(..., max_length=255)
-    row_x: int = 0
-    row_y: int = 0
+    max_products: int 
 
 class WarehouseCreate(WarehouseBase):
     id: Optional[str] = Field(None, description="Если не передашь — сгенерируем UUID")

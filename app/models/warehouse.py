@@ -8,8 +8,9 @@ class Warehouse(Base):
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     address: Mapped[str] = mapped_column(String(255), nullable=False)
-    row_x:  Mapped[int] = mapped_column(Integer, default=0)
-    row_y:  Mapped[int] = mapped_column(Integer, default=0)
+    max_products: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    row_x:  Mapped[int] = mapped_column(Integer, default=26)
+    row_y:  Mapped[int] = mapped_column(Integer, default=50)
     products_count: Mapped[int] = mapped_column(Integer, default=0)
 
     products: Mapped[list["Product"]] = relationship( # type: ignore
