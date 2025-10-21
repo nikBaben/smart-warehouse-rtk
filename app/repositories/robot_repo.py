@@ -53,3 +53,9 @@ class RobotRepository:
         return await self.session.scalar(
             select(Robot).where(Robot.id == id)
         )
+    
+    async def get_all_by_warehouse_id(self, warehosue_id: str):
+        result = await self.session.execute(
+            select(Robot).where(Robot.warehouse_id == warehosue_id)
+        )
+        return list(result.scalars().all())

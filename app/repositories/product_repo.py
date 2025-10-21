@@ -17,8 +17,10 @@ class ProductRepository:
         id: str,
         name: str,
         category: str,
-        min_stock: int,
-        optimal_stock: int,
+        stock: int,
+        current_zone: str,
+        current_row: int,
+        current_shelf: int,
         warehouse_id: str,
         check_warehouse_exists: bool = True,
     ) -> Product:
@@ -33,21 +35,32 @@ class ProductRepository:
             id=id,
             name=name,
             category=category,
-            min_stock=min_stock,
-            optimal_stock=optimal_stock,
+            stock = stock,
+            min_stock=stock*0.2,
+            optimal_stock=stock* 0.8,
+            current_zone =current_zone, 
+            current_row = current_row,
+            current_shelf = current_shelf,
             warehouse_id=warehouse_id,
         )
 
         self.session.add(product)
         try:
             await self.session.flush()
-            await self._bump_products_count(warehouse_id, +optimal_stock)
+            await self._bump_products_count(warehouse_id, +stock)
             await self.session.commit()
         except IntegrityError as e:
             await self.session.rollback()
             raise e
         await self.session.refresh(product)
         return product
+
+    async def get_all_by_warehouse_id(self, warehosue_id: str):
+        result = await self.session.execute(
+            select(Product).where(Product.warehouse_id == warehosue_id)
+        )
+        return list(result.scalars().all())
+
 
     async def get(self, id: str) -> Optional[Product]:
         return await self.session.scalar(

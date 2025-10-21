@@ -16,7 +16,7 @@ class WarehouseRepository:
         *,
         id: str,
         name: str,
-        adress: str,
+        address: str,
         row_x: int,
         row_y: int,
     ) -> Warehouse:
@@ -29,7 +29,7 @@ class WarehouseRepository:
         warehouse = Warehouse(
             id=id,
             name=name,
-            adress=adress,
+            address=address,
             row_x=row_x,
             row_y=row_y,
             products_count = 0
@@ -47,9 +47,7 @@ class WarehouseRepository:
     
     async def get_by_id(self, warehouse_id: str) -> Optional[Warehouse]:
         stmt = (
-            select(Warehouse)
-            .options(selectinload(Warehouse.products), selectinload(Warehouse.robots)) 
-            .where(Warehouse.id == warehouse_id)
+            select(Warehouse).where(Warehouse.id == warehouse_id)
         )
         return await self.session.scalar(stmt)
 

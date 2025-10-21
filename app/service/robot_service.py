@@ -40,3 +40,9 @@ class RobotService:
             if code == "23503":  
                 raise HTTPException(status_code=422, detail="Related entity not found (FK violation)")
             raise HTTPException(status_code=500, detail=f"Integrity error: {detail}")
+        
+    async def get_robots_by_warehouse_id(self, warehouse_id: str):
+        robots = await self.repo.get_all_by_warehouse_id(warehouse_id)
+        if not robots:
+            raise ValueError(f"Роботы на скалде id '{warehouse_id}' не найдены.")
+        return robots

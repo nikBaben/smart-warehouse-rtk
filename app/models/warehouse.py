@@ -7,7 +7,7 @@ class Warehouse(Base):
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    adress: Mapped[str] = mapped_column(String(255), nullable=False)
+    address: Mapped[str] = mapped_column(String(255), nullable=False)
     row_x:  Mapped[int] = mapped_column(Integer, default=0)
     row_y:  Mapped[int] = mapped_column(Integer, default=0)
     products_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -26,3 +26,9 @@ class Warehouse(Base):
         passive_deletes=True,          
     )
 
+    inventory_history: Mapped[list["InventoryHistory"]] = relationship(  # type: ignore
+        back_populates="warehouse",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

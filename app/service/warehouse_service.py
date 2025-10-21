@@ -17,7 +17,7 @@ class WarwehouseService:
             robot = await self.repo.create(
                 id=Warehouse_id,
                 name=data.name,
-                adress=data.adress,
+                address=data.address,
                 row_x=data.row_x,
                 row_y=data.row_y
             )

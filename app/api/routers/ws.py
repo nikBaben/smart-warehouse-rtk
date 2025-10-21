@@ -1,13 +1,13 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from app.ws.ws_manager import ws_manager
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Path
+from app.ws.ws_manager import manager
 
-router = APIRouter(tags=["ws"])
+router = APIRouter()
 
-@router.websocket("/ws/dashboard")
-async def ws_dashboard(ws: WebSocket):
-    await ws_manager.connect(ws)
+@router.websocket("/ws/warehouses/{warehouse_id}")
+async def ws_warehouse(ws: WebSocket, warehouse_id: str = Path(...)):
+    await manager.connect(ws, warehouse_id)
     try:
         while True:
-            await ws.receive_text() 
+            await ws.receive_text()  # держим соединение
     except WebSocketDisconnect:
-        ws_manager.disconnect(ws)
+        await manager.disconnect(ws)

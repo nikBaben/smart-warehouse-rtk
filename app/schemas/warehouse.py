@@ -5,7 +5,7 @@ from app.schemas.robot import RobotRead
 
 class WarehouseBase(BaseModel):
     name: str = Field(..., max_length=255)
-    adress: str = Field(..., max_length=255)
+    address: str = Field(..., max_length=255)
     row_x: int = 0
     row_y: int = 0
 
@@ -14,14 +14,12 @@ class WarehouseCreate(WarehouseBase):
 
 class WarehouseUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
-    adress: Optional[str] = Field(None, max_length=255)
+    address: Optional[str] = Field(None, max_length=255)
     row_x: Optional[int] = None
     row_y: Optional[int] = None
 
 class WarehouseResponse(WarehouseBase):
     products_count: int
-    products: list[ProductRead] = []
-    robots: list[RobotRead] = []
 
     class Config:
         from_attributes = True 

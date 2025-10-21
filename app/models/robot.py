@@ -27,6 +27,13 @@ class Robot(Base):
         lazy="joined", 
     )
 
+    history: Mapped[list["InventoryHistory"]] = relationship(  # type: ignore
+        back_populates="robot",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

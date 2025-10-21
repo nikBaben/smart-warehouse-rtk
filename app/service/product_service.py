@@ -16,8 +16,6 @@ class ProductService:
 
         if data.warehouse_id is None or data.warehouse_id == "":
             raise HTTPException(status_code=400, detail="warehouse_id is required")
-        if data.optimal_stock < data.min_stock:
-            raise HTTPException(status_code=400, detail="optimal_stock must be >= min_stock")
 
         if data.id:
             existing = await self.repo.get(product_id)
@@ -29,8 +27,10 @@ class ProductService:
                 id=product_id,
                 name=data.name,
                 category=data.category,
-                min_stock=data.min_stock,
-                optimal_stock=data.optimal_stock,
+                stock = data.stock,
+                current_zone = data.current_zone,
+                current_row = data.current_row,
+                current_shelf = data.current_shelf, 
                 warehouse_id=data.warehouse_id,   
                 check_warehouse_exists=True,    
             )
@@ -47,3 +47,9 @@ class ProductService:
             if code == "23503":  
                 raise HTTPException(status_code=422, detail="Related entity not found (FK violation)")
             raise HTTPException(status_code=500, detail=f"Integrity error: {detail}")
+    
+    async def get_products_by_warehouse_id(self, warehouse_id: str):
+        prodcts = await self.repo.get_all_by_warehouse_id(warehouse_id)
+        if not prodcts:
+            raise ValueError(f"Товары на скалде id '{warehouse_id}' не найдены.")
+        return prodcts

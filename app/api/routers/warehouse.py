@@ -22,7 +22,8 @@ async def create_warehouse(
 @router.get(
         "/all",
         response_model=list[WarehouseResponse],
-        summary="Список складов"
+        status_code=status.HTTP_200_OK,
+        summary="Список всех складов"
 )
 async def get_warehouses(
     limit: int = Query(100, ge=1, le=500),
@@ -38,8 +39,8 @@ async def get_warehouses(
         summary="Получить склад по ID"
 )
 async def get_warehouse(
-    warehouse_id: str,service:
-    WarwehouseService = Depends(get_warehouse_service)
+    warehouse_id: str,
+    service:WarwehouseService = Depends(get_warehouse_service)
 ):
     warehouse = await service.get_warehouse(warehouse_id)
     if not warehouse:

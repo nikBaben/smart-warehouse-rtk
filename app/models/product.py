@@ -7,10 +7,15 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
+
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(100))
-    min_stock: Mapped[int] = mapped_column(Integer, default=10)
-    optimal_stock: Mapped[int] = mapped_column(Integer, default=100)
+    stock: Mapped[int] = mapped_column(Integer, default=100)
+    min_stock: Mapped[int] = mapped_column(Integer, default=20)
+    optimal_stock: Mapped[int] = mapped_column(Integer, default=80)
+    current_zone: Mapped[str] = mapped_column(String)
+    current_row: Mapped[int] = mapped_column(Integer, default=0)
+    current_shelf: Mapped[int] = mapped_column(Integer, default=0)
 
     warehouse_id: Mapped[str] = mapped_column(
         String(50),
@@ -22,6 +27,13 @@ class Product(Base):
     warehouse: Mapped["Warehouse"] = relationship( # type: ignore
         back_populates="products",
         lazy="joined",  
+    )
+
+    history: Mapped[list["InventoryHistory"]] = relationship(  # type: ignore
+        back_populates="product",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
