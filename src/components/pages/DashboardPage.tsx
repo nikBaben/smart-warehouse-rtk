@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import AddLarge from '@atomaro/icons/24/action/AddLarge';
 import ChevronDown from '@atomaro/icons/24/navigation/ChevronDown';
 import { ForecastAI } from "../widgets/ForecastAI";
+import { UserAvatar } from '../ui/UserAvatar.tsx'
 
 function DashboardPage(){
 
@@ -127,7 +128,7 @@ function DashboardPage(){
     return (
 			<div className='flex bg-[#F4F4F5] min-h-screen'>
 				<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
-					<header className="bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-[300]">
+					<header className='bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-[300]'>
 						<span className='font-bold text-black text-[24px]'>Дашборд</span>
 
 						<div className='ml-auto flex items-center gap-4'>
@@ -168,13 +169,16 @@ function DashboardPage(){
 									</div>
 								)}
 							</div>
-							<Button className='w-[319px] h-[38px] border-[#CCCCCC] border-[1px] rounded-[10px] font-400 text-[20px] text-[#7700FF] flex items-center justify-between px-4'>
-								Добавить робота или товар
-								<AddLarge fill='#7700FF' className='w-[20px] h-[20px]' />
-							</Button>
+							<div className='flex items-center space-x-5'>
+								<Button className='w-[319px] h-[38px] border-[#CCCCCC] border-[1px] rounded-[10px] font-400 text-[20px] text-[#7700FF] flex items-center justify-between px-4'>
+									Добавить робота или товар
+									<AddLarge fill='#7700FF' className='w-[20px] h-[20px]' />
+								</Button>
+								<UserAvatar />
+							</div>
 						</div>
 					</header>
-					<main className="flex-1 overflow-auto pt-[70px] pl-[10px] pr-[10px] pb-[10px]">
+					<main className='flex-1 overflow-auto pt-[70px] pl-[10px] pr-[10px] pb-[10px]'>
 						<div className='grid grid-cols-[2fr_3fr] gap-6 h-full'>
 							<section className='bg-white rounded-[15px] p-[6px] flex flex-col'>
 								<h2 className='font-semibold text-[18px] mb-2'>Карта склада</h2>

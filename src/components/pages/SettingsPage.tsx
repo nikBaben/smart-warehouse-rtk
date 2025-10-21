@@ -9,6 +9,7 @@ import CheckLarge from '@atomaro/icons/24/navigation/CheckLarge';
 import CloseLarge from '@atomaro/icons/24/navigation/CloseLarge';
 import { Label } from '@/components/ui/label'
 import { Notification } from "@/components/widgets/Notifications";
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 function SettingsPage(){
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -25,11 +26,10 @@ function SettingsPage(){
 							<section className='flex flex-col gap-[10px]'>
 								<div className='bg-white rounded-[15px] p-[10px] h-[70px] flex justify-between'>
 									<div className='flex items-center gap-[10px]'>
-										<div className='avatar'>
-											<span className='text-gray-500 text-2xl font-medium'>
-												А
-											</span>
-										</div>
+										<Avatar className='h-12 w-12'>
+											<AvatarImage src='https://github.com/shadcn.png' />
+											<AvatarFallback>CN</AvatarFallback>
+										</Avatar>
 										<div className='flex flex-col text-black'>
 											<span className='text-[18px] font-medium'>
 												Владимир Смолин

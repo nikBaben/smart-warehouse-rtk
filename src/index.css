@@ -20,6 +20,7 @@ body {
 .big-section-font{
   @apply font-semibold text-[24px] mb-2;
 }
+
 .input {
   @apply h-[52px] w-full shadow-none border-none bg-[#F2F3F4] rounded-[10px] placeholder:font-medium placeholder:text-[18px] placeholder:leading-[24px] !text-[18px] !leading-[24px] !text-[#000000] !font-medium gap-[10px];
 }
@@ -56,4 +57,22 @@ body {
 
 .input-description{
   @apply text-[12px] font-medium text-[#BBBBBB] my-1
+}
+
+.add-warehouse-button{
+  @apply w-[213px] h-[38px] cursor-pointer 
+  border-[#CCCCCC] border-[2px] rounded-[10px] text-[20px] text-[#7700FF]
+  flex items-center justify-between 
+  shadow-none
+  transition-all duration-200 ease-in-out
+  hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
+  hover:border-[#7700FF];
+}
+
+.dialog-input-placeholder-text{
+  @apply font-medium text-[16px] text-[#9699A3]
+}
+
+.dialog-title-text{
+  @apply font-medium text-[24px] text-black
 }
