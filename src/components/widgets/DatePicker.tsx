@@ -22,7 +22,7 @@ export function DatePicker() {
         <PopoverTrigger asChild>
           <Button
             data-empty={!startDate}
-            className="data-[empty=true]:text-[10px] w-[96px] h-[18px] justify-between text-left font-light bg-[#F2F3F4] shadow-none text-[#9699A3] px-[5px]"
+            className="cursor-pointer data-[empty=true]:text-[12px] w-[96px] h-[24px] justify-between text-left font-light bg-[#F2F3F4] shadow-none text-[#9699A3] px-[5px]"
           >
             {startDate ? format(startDate, "dd.MM.yyyy") : "от"}
             <ChevronDown fill="#9699A3" className="w-[7px] h-[3px]"/>
@@ -40,7 +40,7 @@ export function DatePicker() {
         <PopoverTrigger asChild>
           <Button
             data-empty={!endDate}
-            className="data-[empty=true]:text-[10px] w-[96px] h-[18px] justify-between text-left font-light bg-[#F2F3F4] shadow-none text-[#9699A3] px-[5px]"
+            className="cursor-pointer data-[empty=true]:text-[12px] w-[96px] h-[24px] justify-between text-left font-light bg-[#F2F3F4] shadow-none text-[#9699A3] px-[5px]"
           >
             {endDate ? format(endDate, "dd.MM.yyyy") : "до"}
             <ChevronDown fill="#9699A3" className="w-[7px] h-[3px]"/>
