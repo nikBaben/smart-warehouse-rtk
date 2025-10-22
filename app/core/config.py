@@ -1,8 +1,4 @@
-# app/core/config.py
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 class Settings:
     KEYCLOAK_URL: str = os.getenv("KEYCLOAK_URL", "http://keycloak:8080")
@@ -10,7 +6,9 @@ class Settings:
     KEYCLOAK_CLIENT_ID: str = os.getenv("KEYCLOAK_CLIENT_ID", "smart-warehouse")
     KEYCLOAK_CLIENT_SECRET: str = os.getenv("KEYCLOAK_CLIENT_SECRET", "GQgCDvuuKhBtuWU01bjZX2po0pSjUs39")
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
-    HOST: str = os.getenv("HOST", "0.0.0.0")  # Важно: 0.0.0.0 для Docker
+    HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://warehouse_user:warehouse_pass@postgres:5432/warehouse_db")
 
+# Создаём экземпляр
 settings = Settings()

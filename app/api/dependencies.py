@@ -48,3 +48,7 @@ async def keycloak_auth_middleware(credentials: HTTPAuthorizationCredentials = D
 
 	logger.info("Middleware token validation successful")
 	return token
+
+async def get_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Получение токена из заголовка Authorization"""
+    return credentials.credentials

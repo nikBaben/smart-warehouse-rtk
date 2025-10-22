@@ -1,9 +1,11 @@
 # app/main.py
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from app.core.config import settings
 from app.api.routers.auth import router as api_router
+from app.api.routers.user import router as users_router
+from app.middleware.auth_middleware import auth_middleware
 
 app = FastAPI(
 	title="Smart Warehouse API",
@@ -31,8 +33,11 @@ app.add_middleware(
 	expose_headers=["*"],
 )
 
+#app.middleware("http")(auth_middleware)
+
 # Подключаем роутер
 app.include_router(api_router)
+app.include_router(users_router)
 
 
 # Корневой endpoint
@@ -54,27 +59,28 @@ async def health_check():
 
 # Кастомная OpenAPI схема для корректного отображения в Swagger
 def custom_openapi():
-	if app.openapi_schema:
-		return app.openapi_schema
-
-	openapi_schema = get_openapi(
-		title="Smart Warehouse API",
-		version="1.0.0",
-		description="API для системы управления складской логистикой",
-		routes=app.routes,
-	)
-
-	# Добавляем сервер для Swagger UI
-	openapi_schema["servers"] = [
-		{
-			"url": "http://localhost:8000",
-			"description": "Development server"
-		}
-	]
-
-	app.openapi_schema = openapi_schema
-	return app.openapi_schema
-
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title="Warehouse API",
+        version="1.0.0",
+        description="API для управления складом",
+        routes=app.routes,
+    )
+    
+    # Добавляем схему аутентификации Bearer
+    openapi_schema["components"]["securitySchemes"] = {
+        "Bearer": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Введите JWT токен из Keycloak"
+        }
+    }
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
 
 app.openapi = custom_openapi
 
