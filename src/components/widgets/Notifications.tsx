@@ -1,5 +1,3 @@
-import React from "react";
-
 interface NotificationItem {
   title: string;
   subtitle: string;
@@ -60,14 +58,14 @@ const notifications: NotificationItem[] = [
   },
 ];
 
-export const Notification: React.FC = () => {
+export function Notification(){
   return (
     <div className="bg-white rounded-[15px]">
       <div className="flex flex-col gap-[10px]">
         {notifications.map((item, index) => (
           <div
             key={index}
-            className="flex justify-between items-start bg-[#F6F7F7] rounded-[10px] h-[59px] px-3 py-2"
+            className="flex justify-between items-center bg-[#F6F7F7] rounded-[10px] h-[59px] px-3 py-2"
           >
             <div className="flex flex-col gap-0.5">
               <span className="text-[16px] font-medium text-[#000]">

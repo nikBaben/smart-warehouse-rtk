@@ -1,10 +1,11 @@
-import { React, useState} from "react";
+import { useState} from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import CheckLarge from "@atomaro/icons/24/navigation/CheckLarge";
 import CloseLarge from "@atomaro/icons/24/navigation/CloseLarge";
 import { Checkbox } from "@/components/ui/checkbox";
 import SelectableButtons from "@/components/widgets/SelectableButtons";
+import { UserAvatar } from '../ui/UserAvatar.tsx'
 
 import { DatePicker } from "../widgets/DatePicker";
 import { ButtonGrid } from "../widgets/ButtonGrid";
@@ -389,8 +390,11 @@ function HistoryPage(){
     return (
         <div className="flex bg-[#F4F4F5] min-h-screen">
             <div className="flex flex-col flex-1 overflow-hidden ml-[60px]">
-                <header className="bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-[300]">
-                    <span className="page-name">Исторические данные</span>
+                <header className='bg-white justify-between flex items-center h-[60px] px-[14px] z-10'>
+                    <span className='pagename-font'>Исторические данные</span>
+                    <div className='flex items-center space-x-5'>
+                        <UserAvatar />
+                    </div>
                 </header>
                 <main className="flex pt-[70px] pl-[10px] pr-[10px] pb-[10px]">
                     <div className="h-[583px] w-[218px]">
