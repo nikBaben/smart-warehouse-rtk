@@ -34,8 +34,13 @@ type WhRobot = {
 
 type WhProduct = {
 	name: string
-	current_zone: string
+	article: string
+	category: string
 	stock: number
+	current_row: number
+	current_shelf: string
+	current_position: string
+	status: string
 }
 
 type Warehouse = {
@@ -49,6 +54,7 @@ function ListPage() {
 	//-----ОБРАБОТКА СОСТОЯНИЙ-----
 	const [warehouses, setWarehouses] = useState<Warehouse[]>([])
 	const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null)
+	
 	
 	const [formData, setFormData] = useState({
 		name: '',
@@ -68,6 +74,8 @@ function ListPage() {
 		name: '',
 		address: '',
 	})
+
+	const [editedProduct, setEditedProduct] = useState<WhProduct | null>(null)
 	
 	const [loading, setLoading] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -192,7 +200,7 @@ function ListPage() {
 				{ headers: { 'Content-Type': 'application/json' } }
 			)
 
-			console.log('✅ Обновлено:', response.data)
+			console.log('Обновлено:', response.data)
 			alert('Данные склада успешно обновлены!')
 
 			// обновляем данные в состоянии
@@ -221,14 +229,16 @@ function ListPage() {
 
 	  setLoading(true)
 	  try {
-			const [rowPart, shelfPart] = formData.current_position.split(',').map(s => s.trim())	
+			const [rowPos, shelfPos] = formData.current_position.split(',').map(s => s.trim())	
 	    const payload = {
-	      name: formData.name,
-	      category: formData.category,
-	      stock: Number(formData.stock),
-	      
-	      warehouse_id: selectedWarehouse.id,
-	    }
+				name: formData.name,
+				article: formData.article,
+				category: formData.category,
+				stock: Number(formData.stock),
+				current_row: Number(rowPos),
+				current_shelf: shelfPos,
+				warehouse_id: selectedWarehouse.id,
+			}
 
 	    const response = await axios.post(
 	      'https://rtk-smart-warehouse.ru/api/v1/products',
@@ -239,13 +249,13 @@ function ListPage() {
 	    console.log('Товар добавлен:', response.data)
 	    alert('Товар успешно добавлен!')
 
-	    // обновляем список товаров текущего склада
+	    //обновляем список товаров текущего склада
 	    const updatedProducts = await axios.get(
 	      `https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`
 	    )
 	    setProducts(updatedProducts.data)
 
-	    // очистка формы
+	    //очистка формы
 	    setFormData({
 				name: '',
 				article: '',
@@ -261,6 +271,52 @@ function ListPage() {
 	  } finally {
 	    setLoading(false)
 	  }
+	}
+
+	const handleProductEditChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const { name, value } = e.target
+		setEditedProduct(prev => (prev ? { ...prev, [name]: value } : prev))
+	}
+
+	const handleUpdateProduct = async (e: React.FormEvent) => {
+		e.preventDefault()
+		if (!selectedWarehouse || !editedProduct) return
+
+		setLoading(true)
+		try {
+			const [rowPos, shelfPos] =
+				editedProduct.current_position?.split(',').map(s => s.trim()) || []
+
+			const payload = {
+				name: editedProduct.name,
+				article: editedProduct.article,
+				category: editedProduct.category,
+				stock: Number(editedProduct.stock),
+				current_row: Number(rowPos),
+				current_shelf: shelfPos,
+				warehouse_id: selectedWarehouse.id,
+			}
+
+			await axios.put(
+				`https://rtk-smart-warehouse.ru/api/v1/products/{editedProduct.id}`,
+				payload,
+				{ headers: { 'Content-Type': 'application/json' } }
+			)
+
+			alert('Изменения успешно сохранены!')
+
+			// обновляем список товаров
+			const updatedProducts = await axios.get(
+				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`
+			)
+			
+			setProducts(updatedProducts.data)
+		} catch (error) {
+			console.error('Ошибка при обновлении товара:', error)
+			alert('Не удалось обновить товар')
+		} finally {
+			setLoading(false)
+		}
 	}
 
 	return (
@@ -283,7 +339,7 @@ function ListPage() {
 									<div
 										key={wh.name}
 										onClick={() => handleSelectWarehouse(wh)}
-										className={`flex justify-between items-center bg-[#F2F3F4] rounded-[15px] max-h-[60px] px-[10px] py-[10px] cursor-pointer transition-all border-[2px]
+										className={`flex justify-between items-center bg-[#F2F3F4] rounded-[10px] max-h-[60px] px-[10px] py-[10px] cursor-pointer transition-all border-[2px]
 												${
 													selectedWarehouse?.name === wh.name
 														? 'border-[2px] border-[#7700FF] shadow-[0_0_10px_rgba(119,0,255,0.3)]'
@@ -314,7 +370,7 @@ function ListPage() {
 							</h2>
 
 							{!selectedWarehouse ? (
-								<div className='flex items-center justify-center font-medium h-full text-[#9699A3] text-[24px]'>
+								<div className='flex items-center justify-center font-medium text-center h-full text-[#9699A3] text-[24px]'>
 									выберите склад для отображения подробной информации
 								</div>
 							) : (
@@ -401,7 +457,7 @@ function ListPage() {
 											{robots.map(robot => (
 												<div
 													key={robot.id}
-													className='flex justify-between bg-[#F2F3F4] max-h-[52px] rounded-[15px] px-[10px] py-[10px] items-center'
+													className='flex justify-between bg-[#F2F3F4] max-h-[52px] rounded-[10px] px-[10px] py-[10px] items-center'
 												>
 													<span className='text-[18px] font-medium text-black'>
 														{robot.id}
@@ -488,7 +544,7 @@ function ListPage() {
 																	name='stock'
 																	value={formData.stock}
 																	onChange={handleChange}
-																	placeholder='Укажите максимальную вместимость склада'
+																	placeholder='100'
 																	required
 																/>
 															</div>
@@ -555,20 +611,157 @@ function ListPage() {
 											</Dialog>
 										</div>
 
-										<div className='max-h-[770px] overflow-y-auto space-y-2'>
+										<div className='!max-h-[200px] overflow-y-auto space-y-2'>
 											{products.map(p => (
-												<div
-													key={p.name}
-													className='flex justify-between bg-[#F2F3F4] max-h-[52px] rounded-[15px] px-[10px] py-[10px] items-center'
-												>
-													<span className='text-[18px] font-medium text-black'>
-														{p.name}
-													</span>
-													<div className='text-right text-[#5A606D] text-[14px]'>
-														<div>статус: {p.current_zone}</div>
-														<div>количество: {p.stock} шт</div>
-													</div>
-												</div>
+												<Dialog>
+													<DialogTrigger
+														className='w-full'
+														onClick={() => setEditedProduct(p)}
+													>
+														<Button
+															aria-label='Add Product'
+															className='product-button'
+														>
+															<div key={p.name} className='product-button-elem'>
+																<span className='text-[18px] font-medium text-black'>
+																	{p.name}
+																</span>
+																<div className='text-right text-[#5A606D] text-[14px]'>
+																	<div>статус: {p.status}</div>
+																	<div>количество: {p.stock} шт</div>
+																</div>
+															</div>
+														</Button>
+													</DialogTrigger>
+													<DialogContent className='bg-[#F4F4F5] !p-[20px] !w-[558px]'>
+														<form onSubmit={handleUpdateProduct}>
+															<DialogHeader>
+																<DialogTitle className='dialog-title-text'>
+																	Просмотр и редактирование
+																</DialogTitle>
+															</DialogHeader>
+															<div className='grid gap-4'>
+																<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+																	<Label
+																		className='section-title'
+																		htmlFor='name'
+																	>
+																		Название товара
+																	</Label>
+																	<Input
+																		className='dialog-input-placeholder-text'
+																		id='name'
+																		name='name'
+																		value={editedProduct?.name}
+																		onChange={handleProductEditChange}
+																		placeholder='Например, Apple IPhone 17'
+																		required
+																	/>
+																</div>
+																<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+																	<Label
+																		className='section-title'
+																		htmlFor='address'
+																	>
+																		Артикул товара
+																	</Label>
+																	<Input
+																		className='dialog-input-placeholder-text'
+																		id='article'
+																		name='article'
+																		value={editedProduct?.article}
+																		onChange={handleProductEditChange}
+																		placeholder='Например, 9573420'
+																		required
+																	/>
+																</div>
+																<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+																	<Label
+																		className='section-title'
+																		htmlFor='stock'
+																	>
+																		Количество единиц товара (шт)
+																	</Label>
+																	<Input
+																		className='dialog-input-placeholder-text'
+																		id='stock'
+																		name='stock'
+																		value={editedProduct?.stock}
+																		onChange={handleProductEditChange}
+																		placeholder='100'
+																		required
+																	/>
+																</div>
+																<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+																	<Label
+																		className='section-title'
+																		htmlFor='stock'
+																	>
+																		Категория товара
+																	</Label>
+																	<Select
+																		value={editedProduct?.category}
+																		onValueChange={value =>
+																			setEditedProduct(prev =>
+																				prev
+																					? { ...prev, category: value }
+																					: prev
+																			)
+																		}
+																	>
+																		<SelectTrigger className='w-full'>
+																			<SelectValue placeholder='Выберите категорию' />
+																		</SelectTrigger>
+																		<SelectContent>
+																			<SelectItem value='Смартфоны'>
+																				Смартфоны
+																			</SelectItem>
+																			<SelectItem value='Бытовая техника'>
+																				Бытовая техника
+																			</SelectItem>
+																			<SelectItem value='Комплектующие'>
+																				Комплектующие
+																			</SelectItem>
+																		</SelectContent>
+																	</Select>
+																</div>
+																<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+																	<Label
+																		className='section-title'
+																		htmlFor='current_position'
+																	>
+																		Где расположен товар?
+																	</Label>
+																	<Input
+																		className='dialog-input-placeholder-text'
+																		id='current_position'
+																		name='current_position'
+																		value={`${editedProduct?.current_row}, ${editedProduct?.current_shelf}`}
+																		onChange={handleProductEditChange}
+																		placeholder='Координаты сектора, в формате 1-50, A-Z'
+																		required
+																	/>
+																</div>
+															</div>
+															<DialogFooter className='mt-2'>
+																<DialogClose asChild>
+																	<Button className='w-[50%] items-center rounded-[10px] text-[18px] text-white font-medium bg-[#FF4F12] cursor-pointer transition-all hover:brightness-90'>
+																		<X className='!h-5 !w-5' />
+																		Отмена
+																	</Button>
+																</DialogClose>
+																<Button
+																	type='submit'
+																	className='w-[50%] rounded-[10px] text-[18px] text-white font-medium bg-[#7700FF] cursor-pointer transition-all hover:brightness-90'
+																	disabled={loading}
+																>
+																	<Check className='!h-5 !w-5' />
+																	{loading ? 'Изменение...' : 'Подтвердить'}
+																</Button>
+															</DialogFooter>
+														</form>
+													</DialogContent>
+												</Dialog>
 											))}
 										</div>
 									</div>

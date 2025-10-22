@@ -396,7 +396,7 @@ function HistoryPage(){
                         <UserAvatar />
                     </div>
                 </header>
-                <main className="flex pt-[70px] pl-[10px] pr-[10px] pb-[10px]">
+                <main className="flex pt-[10px] pl-[10px] pr-[10px] pb-[10px]">
                     <div className="h-[583px] w-[218px]">
                         <h2 className="font-medium text-[20px] "> Фильтры</h2>
                         <div className="h-[552px] w-[218px] bg-white rounded-[15px]">

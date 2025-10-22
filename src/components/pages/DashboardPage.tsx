@@ -128,7 +128,7 @@ function DashboardPage(){
     return (
 			<div className='flex bg-[#F4F4F5] min-h-screen'>
 				<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
-					<header className='bg-white h-[60px] w-full flex items-center pl-[74px] pr-[10px] fixed top-0 left-0 z-[300]'>
+					<header className='bg-white justify-between flex items-center h-[60px] px-[14px] z-10'>
 						<span className='pagename-font'>Дашборд</span>
 
 						<div className='ml-auto flex items-center gap-4'>
@@ -178,39 +178,55 @@ function DashboardPage(){
 							</div>
 						</div>
 					</header>
-					<main className='flex-1 overflow-auto pt-[70px] pl-[10px] pr-[10px] pb-[10px]'>
-						<div className='grid grid-cols-[2fr_3fr] gap-6 h-full'>
-							<section className='bg-white rounded-[15px] p-[6px] flex flex-col'>
+					<main className='flex-1 overflow-auto p-[10px]'>
+						<div className='grid grid-cols-12 gap-3 h-full'>
+							<section className='bg-white rounded-[10px] p-[6px] flex flex-col col-span-5'>
 								<h2 className='font-semibold text-[18px] mb-2'>Карта склада</h2>
 								<div className='flex-1 bg-[#F6F7F7] rounded-[10px]'></div>
 							</section>
-							<section className='grid grid-cols-2 gap-4 auto-rows-min'>
-								<div className='bg-white rounded-[10px] p-[6px] pl-[12px] flex flex-col justify-between h-[102px]'>
-									<h3 className='font-medium text-[18px] mb-1'>
-										Критические остатки
-									</h3>
-									<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
-										<p className='text-[28px] font-bold'>102</p>
-										<p className='text-[10px] text-[#CCCCCC] font-light '>
-											{' '}
-											количество SKU{' '}
-										</p>
+							<section className='col-span-7 gap-4 auto-rows-min space-y-[10px]'>
+								<div className='bg-transparent grid grid-cols-7 gap-3 col-span-2 w-full'>
+									<div className='col-span-2 bg-white rounded-[10px] p-[6px] pl-[12px] flex flex-col justify-between h-[102px]'>
+										<h3 className='font-medium text-[18px] mb-1'>
+											Критические остатки
+										</h3>
+										<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
+											<p className='text-[28px] font-bold'>102</p>
+											<p className='text-[10px] text-[#CCCCCC] font-light'>
+												{' '}
+												количество SKU{' '}
+											</p>
+										</div>
+									</div>
+									<div className='col-span-2 bg-white rounded-[10px] p-[6px] pl-[12px] flex flex-col justify-between h-[102px]'>
+										<h3 className='font-medium text-[18px] mb-1'>
+											Проверено за 24ч
+										</h3>
+										<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
+											<p className='text-[28px] font-bold'>1430</p>
+											<p className='text-[10px] text-[#CCCCCC] font-light'>
+												{' '}
+												позиций{' '}
+											</p>
+										</div>
+									</div>
+									<div className='col-span-3 bg-white rounded-[10px] p-[6px] pl-[12px] flex flex-col justify-between h-[102px]'>
+										<h3 className='font-medium text-[18px] mb-1'>
+											Ср. статус по складу
+										</h3>
+										<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
+											<p className='text-[28px] font-bold'>
+												критическое состояние
+											</p>
+											<p className='text-[10px] text-[#CCCCCC] font-light'>
+												{' '}
+												статистика{' '}
+											</p>
+										</div>
 									</div>
 								</div>
-								<div className='bg-white rounded-[10px] p-[6px] pl-[12px] flex flex-col justify-between h-[102px]'>
-									<h3 className='font-medium text-[18px] mb-1'>
-										Средний заряд батарей
-									</h3>
-									<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
-										<p className='text-[28px] font-bold'>47%</p>
-										<p className='text-[10px] text-[#CCCCCC] font-light '>
-											{' '}
-											среднее значение{' '}
-										</p>
-									</div>
-								</div>
-								<div className='bg-transparent grid grid-cols-[73%_calc(27%-1rem)] gap-4 col-span-2 w-full h-[200px]'>
-									<div className='bg-white rounded-[10px] pt-[6px] pl-[10px] pr-[10px] pb-[10px]'>
+								<div className='bg-transparent grid grid-cols-7 gap-3 col-span-2 w-full h-[200px]'>
+									<div className='bg-white rounded-[10px] pt-[6px] pl-[10px] pr-[10px] pb-[10px] col-span-5'>
 										<h3 className='font-medium text-[18px] mb-1'>
 											График активности роботов
 										</h3>
@@ -218,36 +234,36 @@ function DashboardPage(){
 											<RobotActivityChart />
 										</div>
 									</div>
-									<div className='flex flex-col gap-4'>
+									<div className='flex flex-col col-span-2 gap-3'>
 										<div className='bg-white rounded-[10px] h-[95px] flex flex-col p-[6px] pl-[12px]'>
 											<h3 className='font-medium text-[18px]'>Роботы</h3>
 											<div className='flex flex-col items-center justify-center space-y-[-8px]'>
 												<span className='text-[30px] font-bold'>71/96</span>
-												<p className='text-[10px] text-[#CCCCCC] font-[400]'>
+												<p className='text-[10px] text-[#CCCCCC] font-light'>
 													активных/всего
 												</p>
 											</div>
 										</div>
 										<div className='bg-white rounded-[10px] h-[95px] flex flex-col p-[6px] pl-[12px]'>
 											<h3 className='font-medium text-[18px]'>
-												Проверено за 24 ч
+												Ср. заряд батарей
 											</h3>
 											<div className='flex flex-col items-center justify-center space-y-[-8px]'>
-												<span className='text-[30px] font-bold'>1430</span>
-												<p className='text-[10px] text-[#CCCCCC] font-[400]'>
-													позиций
+												<span className='text-[30px] font-bold'>47%</span>
+												<p className='text-[10px] text-[#CCCCCC] font-light'>
+													среднее значение
 												</p>
 											</div>
 										</div>
 									</div>
 								</div>
-								<div className='bg-white rounded-[15px] pl-[10px] pt-[6px] pr-[10px] pb-[10px] col-span-2 h-[334px]'>
+								<div className='bg-white rounded-[10px] pl-[10px] pt-[6px] pr-[10px] pb-[10px] col-span-2 h-[334px]'>
 									<h3 className='font-medium text-[18px]'>
 										Последние сканирования
 									</h3>
 									<DataTable data={data} columns={columns} />
 								</div>
-								<div className='bg-white rounded-[15px] pl-[10px] pt-[6px] pr-[10px] pb-[10px] col-span-2'>
+								<div className='bg-white rounded-[10px] pl-[10px] pt-[6px] pr-[10px] pb-[10px] col-span-2'>
 									<ForecastAI />
 								</div>
 							</section>

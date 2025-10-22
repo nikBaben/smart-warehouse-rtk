@@ -10,6 +10,13 @@ import CloseLarge from '@atomaro/icons/24/navigation/CloseLarge';
 import { Label } from '@/components/ui/label'
 import { Notification } from "@/components/widgets/Notifications";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 
 function SettingsPage(){
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -49,11 +56,21 @@ function SettingsPage(){
 									<div className='flex flex-col gap-[15px]'>
 										<div className='flex flex-col'>
 											<Label className='section-title'>Имя</Label>
-											<Input className='input'></Input>
+											<Input
+												className='main-input !text-[16px]'
+												id='name'
+												name='name'
+												value='Владимир'
+											></Input>
 										</div>
 										<div className='flex flex-col'>
 											<span className='section-title'>Фамилия</span>
-											<Input className='input'></Input>
+											<Input
+												className='main-input !text-[16px]'
+												id='surname'
+												name='surname'
+												value='Смолин'
+											></Input>
 										</div>
 										<div className='flex flex-col'>
 											<Label className='section-title'>Логин</Label>
@@ -62,10 +79,11 @@ function SettingsPage(){
 												Вас идентифицировать
 											</Label>
 											<Input
-												className='dialog-input-placeholder-text main-input'
-												id='email'
-												name='email'
+												className='main-input !text-[16px]'
+												id='login'
+												name='login'
 												placeholder='+79634791447'
+												value='vvsmolin@gmail.com'
 											/>
 										</div>
 										<div className='flex flex-col'>
@@ -75,22 +93,31 @@ function SettingsPage(){
 											<Label className='input-description'>
 												Сюда мы будем отправлять Вам отчеты о проверках
 											</Label>
-											<Input className='input'></Input>
+											<Input
+												className='main-input !text-[16px]'
+												id='email'
+												name='email'
+												placeholder='voenmeh@gmail.com'
+											></Input>
 										</div>
 										<div className='relative'>
 											<span className='section-title'>Роль</span>
-											<Button
-												className='w-full h-[52px] border-none rounded-[10px] text-[18px] bg-[#F2F3F4] flex justify-between'
-												onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-											>
-												Работник склада
-												<ChevronDown
-													fill='#9699A3'
-													className={`w-[17px] h-[8px] transition-transform duration-200 ${
-														isDropdownOpen ? 'rotate-180' : ''
-													}`}
-												/>
-											</Button>
+											<Select>
+												<SelectTrigger className='w-full !h-[52px]'>
+													<SelectValue placeholder='Выберите категорию' />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value='Смартфоны'>
+														Пользователь склада
+													</SelectItem>
+													<SelectItem value='Бытовая техника'>
+														Администратор
+													</SelectItem>
+													<SelectItem value='Комплектующие'>
+														Бро ты умрешь и т.д.
+													</SelectItem>
+												</SelectContent>
+											</Select>
 
 											{isDropdownOpen && (
 												<div className='absolute right-0 mt-1 w-auto bg-white border border-gray-300 rounded-[10px] shadow-lg z-50 text-[#7700FF] text-[20px]'>

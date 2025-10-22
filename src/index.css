@@ -60,6 +60,17 @@ input::placeholder {
   flex items-center justify-center transition-all duration-200 hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
 }
 
+.product-button{
+  @apply shadow-none
+  cursor-pointer w-full h-[52px] p-0 m-0 rounded-[10px]
+}
+
+.product-button-elem{
+  @apply flex items-center max-h-[52px] justify-between bg-[#F2F3F4] p-[10px] w-full rounded-[10px] text-[20px]
+  transition-all duration-200 ease-in-out border-[2px]
+  border border-transparent hover:border-[2px] hover:border-[#7700FF];
+}
+
 .input-description{
   @apply text-[12px] px-[0.5px] font-light text-[#9699A3] my-1
 }
@@ -85,7 +96,7 @@ input::placeholder {
 }
 
 .dialog-input-placeholder-text{
-  @apply font-medium text-[16px] text-black
+  @apply font-medium !text-[16px] text-black
 }
 
 .dialog-title-text{
@@ -93,5 +104,5 @@ input::placeholder {
 }
 
 .main-input{
-  @apply h-[52px] rounded-[10px] !text-[20px] font-medium
+  @apply h-[52px] rounded-[10px] text-[20px] font-medium
 }

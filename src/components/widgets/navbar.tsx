@@ -41,7 +41,6 @@ export function Navbar() {
 						<button
 							onClick={() => setShowExit(true)}
 							title='Выход'
-							className='transition-transform hover:scale-110'
 						>
 							<Release
 								fill='#9CA3AF'
