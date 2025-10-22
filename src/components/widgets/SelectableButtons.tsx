@@ -31,7 +31,7 @@ const SelectableButtons: React.FC<SelectableButtonsProps> = ({ params }) => {
             }`}
           >
             {param}
-            {isSelected && <Check className="w-3 h-3 mr-1 text-black" />}
+            {isSelected && <Check className="w-3 h-3 mr-1 text-[#9699A3]" />}
           </Button>
         );
       })}

@@ -6,7 +6,383 @@ import CloseLarge from "@atomaro/icons/24/navigation/CloseLarge";
 import { Checkbox } from "@/components/ui/checkbox";
 import SelectableButtons from "@/components/widgets/SelectableButtons";
 
+import { DatePicker } from "../widgets/DatePicker";
+import { ButtonGrid } from "../widgets/ButtonGrid";
+import { DataTableHistory } from "../widgets/DataTableHistory";
+
+import StatisticsLine from '@atomaro/icons/24/business/StatisticsLine';
+import Upload from '@atomaro/icons/24/action/Upload';
+
+
 function HistoryPage(){
+        const data = [
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        },  
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+                {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        },  
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+                {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        },  
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+                {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        },  
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+                {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        },  
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+                {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        },  
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Критично",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "OK",
+        }, 
+        {
+        time: "13:35:16",
+        robot: "M-532",
+        department: "Разгрузка",
+        product: "Apple iPhone 17 Pro Max – 32400130",
+        quantity: 36,
+        discrepancy: -7,
+        status: "Низкий остаток",
+        }, 
+    ];
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+        case "OK":
+            return "bg-[#0ACB5B]";
+        case "Низкий остаток":
+            return "bg-[#FDA610]";
+        case "Критично":
+            return "bg-[#FF2626]";
+        default:
+            return "bg-gray-400";
+        }
+    };
+
+    type Column<T> = {
+        header: string;
+        accessor: keyof T | ((row: T) => React.ReactNode);
+        className?: string;
+        align?: "left" | "center" | "right";
+    };
+
+    const columns: Column<typeof data[0]>[] = [
+        { header: "дата и время проверки", accessor: "time" },
+        { header: "id робота", accessor: "robot" },
+        { header: "зона склада", accessor: "department" },
+        { header: "название", accessor: "product" },
+        { header: "количество ожидаемое/фактическое", accessor: "quantity" },
+        { header: "расхождение (+/-)", accessor: "discrepancy" },
+        {
+            header: "статус",
+            accessor: (row) => (
+            <span
+                className={`${getStatusColor(row.status)} text-black text-[10px] font-light rounded-[5px] px-[4px] py-[2px]`}
+            >
+                {row.status}
+            </span>
+            ),
+            align: "left",
+        },
+    ];
+
+    {/*Наверное так удобнее будет*/}
     const zones = ["разгрузка", "погрузка", "заморозка", "зона особых товаров"];
     const categories = ["бытовая техника и электроника", "смартфоны", "комплектующие для ПК", "сетевое оборудование", "драгоценные металлы", "редкие дорогостоящие вещества", "оружие", "другое"]
 
@@ -16,7 +392,7 @@ function HistoryPage(){
                 <header className="bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-[300]">
                     <span className="page-name">Исторические данные</span>
                 </header>
-                <main className="flex-1 pt-[70px] pl-[10px] pr-[10px] pb-[10px]">
+                <main className="flex pt-[70px] pl-[10px] pr-[10px] pb-[10px]">
                     <div className="h-[583px] w-[218px]">
                         <h2 className="font-medium text-[20px] "> Фильтры</h2>
                         <div className="h-[552px] w-[218px] bg-white rounded-[15px]">
@@ -28,8 +404,14 @@ function HistoryPage(){
                                 <div className="h-[85px] w-[198px]">
                                     <span className="text-[14px] font-medium"> Выбор периода </span>
                                     <div className="h-[39px] w-[198px]">
-                                        <div className="flex">
-                                            
+                                        <div className="flex flex-col gap-[7px]">
+                                            <div>
+                                                {/*Нужно пофиксить DatePicker, с ним прям беды какие-то*/}
+                                                <DatePicker/>
+                                            </div> 
+                                            <div>
+                                                <ButtonGrid/>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -83,6 +465,40 @@ function HistoryPage(){
                                     </Button>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                    <div className="flex flex-col pl-[10px] w-full  gap-[5px]">
+                        {/*Ультра заглушка, потом что-то нормальное напишу*/}
+                        <div className="h-[77px]">
+                            <h2 className="font-medium text-[20px]">Сводная статистика</h2>
+                            <div className="h-[46px] bg-white rounded-[15px] flex items-center justify-between p-[10px]">
+                                <span className="text-[14px] font-light">всего проверок за период: 12375</span>
+                                <span className="text-[14px] font-light">уникальных товаров: 56</span>
+                                <span className="text-[14px] font-light">выявлено расхождений: 21</span>
+                                <span className="text-[14px] font-light">среднее время инвентаризации: 10 мин</span>
+                            </div>
+                        </div>
+                        <div>
+                            <h2 className="font-medium text-[20px]">Историческая таблица</h2>
+                            <div className="h-[751px] bg-white rounded-[15px] pl-[10px] pr-[10px]">
+                                <DataTableHistory data={data} columns={columns} />
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-[10px] pt-[10px]">
+                            <div className="flex gap-[5px]">
+                                <Button className="h-[30px] w-[187px] text-[12px] text-[#7700FF] bg-[#F7F0FF] border-[#7700FF] border-[1px] rounded-[10px] font-medium">
+                                    <Upload fill="#7700FF" className="h-[8px] w-[8px]"/>
+                                    Экспорт в Excel
+                                </Button>
+                                <Button className="h-[30px] w-[187px] text-[12px] text-[#7700FF] bg-[#F7F0FF] border-[#7700FF] border-[1px] rounded-[10px] font-medium">
+                                    <Upload fill="#7700FF" className="h-[8px] w-[8px]"/>
+                                    Экспорт в PDF
+                                </Button>
+                            </div>
+                            <Button className="h-[30px] w-[187px] text-[12px] text-white bg-[#7700FF] rounded-[10px] font-medium">
+                                <StatisticsLine fill="white" className="h-[6px] w-[11px]"/>
+                                Построить график
+                            </Button>
                         </div>
                     </div>
                 </main>
