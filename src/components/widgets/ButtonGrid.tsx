@@ -12,7 +12,7 @@ export function ButtonGrid() {
         <Button
           key={label}
           onClick={() => setActiveButton(index)}
-          className={`h-[18px] w-[96px] text-[10px] font-medium 
+          className={`h-[24px] w-[96px] text-[12px] font-medium cursor-pointer
                       ${activeButton === index ? "border-[1px] border-[#7700FF]" : "border-none"} 
                       bg-[#F2F3F4] text-black shadow-none`}
         >

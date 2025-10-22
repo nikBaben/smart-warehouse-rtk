@@ -397,17 +397,17 @@ function HistoryPage(){
                     </div>
                 </header>
                 <main className="flex pt-[10px] pl-[10px] pr-[10px] pb-[10px]">
-                    <div className="h-[583px] w-[218px]">
+                    <div className="h-[662px] w-[218px]">
                         <h2 className="font-medium text-[20px] "> Фильтры</h2>
-                        <div className="h-[552px] w-[218px] bg-white rounded-[15px]">
-                            <div className="p-[10px] flex flex-col w-[198px] gap-[15px]">
-                                <div>
+                        <div className="h-[662px] w-[218px] bg-white rounded-[15px]">
+                            <div className="p-[10px] flex flex-col w-[199px] gap-[15px]">
+                                <div className="h-[42px]">
                                     <span className="text-[14px] font-medium"> Поиск </span>
-                                    <Input placeholder = "артикул или название товара" className="h-[18px] w-[198px] border-none shadow-none bg-[#F2F3F4] placeholder:font-medium placeholder:text-[10px] !text-[10px] !text-[#000000]"></Input>
+                                    <Input placeholder = "артикул или название товара" className="h-[24px] w-[198px] border-none shadow-none bg-[#F2F3F4] placeholder:font-medium placeholder:text-[12px] !text-[12px] !text-[#000000] px-[5px]"></Input>
                                 </div>
-                                <div className="h-[85px] w-[198px]">
+                                <div className="h-[103px] w-[198px]">
                                     <span className="text-[14px] font-medium"> Выбор периода </span>
-                                    <div className="h-[39px] w-[198px]">
+                                    <div className="h-[82px] w-[198px]">
                                         <div className="flex flex-col gap-[7px]">
                                             <div>
                                                 {/*Нужно пофиксить DatePicker, с ним прям беды какие-то*/}
@@ -419,39 +419,41 @@ function HistoryPage(){
                                         </div>
                                     </div>
                                 </div>
-                                <div className="h-[99px] w-[198px]">
+                                <div className="h-[120px] w-[198px]">
                                     <span className="text-[14px] font-medium"> Зоны склада </span>
                                     <SelectableButtons params={zones}/>
                                 </div>
-                                <div className="h-[176px] w-[198px]">
+                                <div className="h-[231px] w-[198px]">
                                     <span className="text-[14px] font-medium"> Категории товаров </span>
                                     <SelectableButtons params={categories}/>
                                 </div>
                                 <div className="h-[53px] w-[198px]">
                                     <span className="text-[14px] font-medium"> Статус </span>
-                                    <div className="h-[35px]  p-[5px] bg-[#F2F3F4] gap-[0px] rounded-[5px] flex-col items-center">
-                                        <div className="flex gap-[2px]  items-center">
-                                            <Checkbox className="history-checkbox"/> 
-                                            <span className="text-[#000000] text-[10px]">
-                                                все
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex gap-[2px]  items-center">
-                                                <Checkbox className="history-checkbox"/> 
-                                                <span className="text-[#000000] text-[10px]">
-                                                    ок
+                                    <div className="h-[35px] pl-[5px] bg-[#F2F3F4] gap-[5px] rounded-[5px] flex-col items-center">
+                                        <div className="flex gap-[5px] items-center">
+                                            <div className="flex gap-[2px] items-center">
+                                                <Checkbox className="history-checkbox cursor-pointer"/> 
+                                                <span className="text-[#000000] text-[12px]">
+                                                    все
                                                 </span>
                                             </div>
                                             <div className="flex gap-[2px] items-center">
-                                                <Checkbox className="history-checkbox"/> 
-                                                <span className="text-[#000000] text-[10px]">
+                                                <Checkbox className="history-checkbox cursor-pointer"/> 
+                                                <span className="text-[#000000] text-[12px]">
+                                                    ок
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-[5px]">
+                                            <div className="flex gap-[2px] items-center">
+                                                <Checkbox className="history-checkbox cursor-pointer"/> 
+                                                <span className="text-[#000000] text-[12px]">
                                                     низкий остаток
                                                 </span>                                         
                                             </div>
                                             <div className="flex gap-[2px]  items-center">
-                                                <Checkbox className="history-checkbox"/> 
-                                                <span className="text-[#000000] text-[10px]">
+                                                <Checkbox className="history-checkbox cursor-pointer"/> 
+                                                <span className="text-[#000000] text-[12px]">
                                                     критично
                                                 </span>
                                             </div>

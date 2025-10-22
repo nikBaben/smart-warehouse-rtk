@@ -26,7 +26,7 @@ const SelectableButtons: React.FC<SelectableButtonsProps> = ({ params }) => {
           <Button
             key={index}
             onClick={() => toggleZone(param)}
-            className={`flex items-center w-[198px] h-[18px] text-[10px] font-medium text-black justify-between rounded-[5px] shadow-none p-[2px] ${
+            className={`flex items-center w-[198px] h-[24px] text-[12px] font-medium cursor-pointer text-black justify-between rounded-[5px] shadow-none p-[2px] ${
               isSelected ? "border border-purple-600" : "border border-transparent"
             }`}
           >
