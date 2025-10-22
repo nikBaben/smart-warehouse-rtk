@@ -9,7 +9,7 @@ class WarehouseBase(BaseModel):
     max_products: int 
 
 class WarehouseCreate(WarehouseBase):
-    id: Optional[str] = Field(None, description="Если не передашь — сгенерируем UUID")
+    pass
 
 class WarehouseUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
@@ -18,6 +18,7 @@ class WarehouseUpdate(BaseModel):
     row_y: Optional[int] = None
 
 class WarehouseResponse(WarehouseBase):
+    id: str
     products_count: int
 
     class Config:
