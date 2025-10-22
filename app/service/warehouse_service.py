@@ -11,7 +11,7 @@ class WarwehouseService:
         self.repo = repo
 
     async def create_warehouse(self, data: WarehouseCreate) -> Warehouse:
-        Warehouse_id = data.id or str(uuid4())
+        Warehouse_id = str(uuid4())
 
         try:
             robot = await self.repo.create(

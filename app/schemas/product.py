@@ -10,9 +10,8 @@ class ProductBase(BaseModel):
     stock: conint(ge=0) = Field(100, description="Всего товаров") # type: ignore
     #min_stock: conint(ge=0) = Field(20, description="Минимальный запас товара на складе") # type: ignore
     #optimal_stock: conint(ge=0) = Field(80, description="Оптимальный запас товара на складе") # type: ignore
-    current_zone: str = Field(..., min_length=1)
     current_row: int = 0
-    current_shelf: str = "Хранение"
+    current_shelf: str = "A"
 
 
 class ProductCreate(ProductBase):
@@ -22,8 +21,12 @@ class ProductCreate(ProductBase):
 
 class ProductRead(ProductBase):
     id: str
+    status: str
+    current_zone: str 
+    status: str
     warehouse_id: Optional[str]
     created_at: datetime
+
 
     class Config:
         from_attributes = True  

@@ -30,7 +30,7 @@ class ProductService:
                 category=data.category,
                 article = data.article,
                 stock = data.stock,
-                current_zone = data.current_zone,
+                current_zone = "A",
                 current_row = data.current_row,
                 current_shelf = data.current_shelf, 
                 warehouse_id=data.warehouse_id,   

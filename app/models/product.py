@@ -10,12 +10,13 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(100))
     article: Mapped[str] = mapped_column(String(100))
-    stock: Mapped[int] = mapped_column(Integer, default=100)
+    stock: Mapped[int] = mapped_column(Integer, default=100,nullable=False)
     min_stock: Mapped[int] = mapped_column(Integer, default=20)
     optimal_stock: Mapped[int] = mapped_column(Integer, default=80)
     current_zone: Mapped[str] = mapped_column(String, default="Храненние")
     current_row: Mapped[int] = mapped_column(Integer, default=0)
     current_shelf: Mapped[str] = mapped_column(String, default="A")
+    status: Mapped[str] = mapped_column(String, default="ок")
 
     warehouse_id: Mapped[str] = mapped_column(
         String(50),
