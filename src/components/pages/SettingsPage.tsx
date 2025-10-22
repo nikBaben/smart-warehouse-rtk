@@ -61,7 +61,12 @@ function SettingsPage(){
 												Укажите свою почту или номер телефона, чтобы мы могли
 												Вас идентифицировать
 											</Label>
-											<Input className='input'></Input>
+											<Input
+												className='dialog-input-placeholder-text main-input'
+												id='email'
+												name='email'
+												placeholder='+79634791447'
+											/>
 										</div>
 										<div className='flex flex-col'>
 											<Label className='section-title'>

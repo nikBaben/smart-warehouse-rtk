@@ -6,6 +6,25 @@ import { Button } from '@/components/ui/button'
 import AddSmall from '@atomaro/icons/24/action/AddSmall'
 import { UserAvatar } from '../ui/UserAvatar.tsx'
 import { AddWarehouseDialog } from '../ui/AddWarehouseDialog.tsx'
+import { Check } from 'lucide-react'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
+import { X } from 'lucide-react'
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from '@/components/ui/dialog'
 
 type WhRobot = {
 	status: string
@@ -30,17 +49,36 @@ function ListPage() {
 	//-----ОБРАБОТКА СОСТОЯНИЙ-----
 	const [warehouses, setWarehouses] = useState<Warehouse[]>([])
 	const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null)
+	
+	const [formData, setFormData] = useState({
+		name: '',
+		article: '',
+		category: '',
+		stock: '',
+		current_row: '',
+		current_shelf: '',
+		current_position: '',
+	})
+	
 	const [robots, setRobots] = useState<WhRobot[]>([])
+	
 	const [products, setProducts] = useState<WhProduct[]>([])
+	
+	const [editedWarehouse, setEditedWarehouse] = useState({
+		name: '',
+		address: '',
+	})
+	
 	const [loading, setLoading] = useState(false)
 	const [error, setError] = useState<string | null>(null)
+	
 
 	//-----ЗАГРУЗКА СПИСКА СКЛАДОВ-----
 	useEffect(() => {
 		const fetchWarehouses = async () => {
 			try {
 				const response = await axios.get(
-					'http://51.250.97.137:8001/api/v1/warehouse/all',
+					'https://rtk-smart-warehouse.ru/api/v1/warehouse/all',
 					{
 						headers: { 'Content-Type': 'application/json' },
 					}
@@ -56,24 +94,44 @@ function ListPage() {
 		fetchWarehouses()
 	}, [])
 
-	const handleSelect = async (warehouse: Warehouse) => {
+	useEffect(() => {
+		if (selectedWarehouse) {
+			setEditedWarehouse({
+				name: selectedWarehouse.name || '',
+				address: selectedWarehouse.address || '',
+			})
+		}
+	}, [selectedWarehouse])
+
+	const handleSelectWarehouse = async (warehouse: Warehouse) => {
+		if(selectedWarehouse?.id == warehouse.id){
+			setSelectedWarehouse(null)
+			setRobots([])
+			setProducts([])
+			return
+		}
+
 		setSelectedWarehouse(warehouse)
 		setLoading(true)
 		setError(null)
+
+		setRobots([]) //очистка старых полей при выборе склада
+		setProducts([])
+
 		try {
 			const warehouseById = await axios.get(
-				`http://51.250.97.137:8001/api/v1/robots/get_robots_by_warehouse_id/${warehouse.id}`
+				`https://rtk-smart-warehouse.ru/api/v1/robots/get_robots_by_warehouse_id/${warehouse.id}`
 			)
 			console.log('Данные склада:', warehouseById.data)
 			
 			const robotsById = await axios.get(
-				`http://51.250.97.137:8001/api/v1/robots/get_robots_by_warehouse_id/${warehouse.id}`
+				`https://rtk-smart-warehouse.ru/api/v1/robots/get_robots_by_warehouse_id/${warehouse.id}`
 			)
 			console.log('Роботы на складе:',robotsById.data)
 			setRobots(robotsById.data)
 
 			const productsById = await axios.get(
-				`http://51.250.97.137:8001/api/v1/products/get_products_by_warehouse_id/${warehouse.id}`
+				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${warehouse.id}`
 			)
 			console.log('Товары на складе:', productsById.data)
 			setProducts(productsById.data)
@@ -95,7 +153,7 @@ function ListPage() {
 			}
 
 			const response = await axios.post(
-				'http://51.250.97.137:8001/api/v1/robots',
+				'https://rtk-smart-warehouse.ru/api/v1/robots',
 				payload,
 				{ headers: { 'Content-Type': 'application/json' } }
 			)
@@ -105,13 +163,104 @@ function ListPage() {
 
 			// обновляем список роботов для текущего склада
 			const robotsResponse = await axios.get(
-				`http://51.250.97.137:8001/api/v1/robots/get_robots_by_warehouse_id/${selectedWarehouse.id}`
+				`https://rtk-smart-warehouse.ru/api/v1/robots/get_robots_by_warehouse_id/${selectedWarehouse.id}`
 			)
 			setRobots(robotsResponse.data)
 		} catch (error) {
 			console.error('Ошибка при добавлении робота:', error)
 			alert('Не удалось добавить робота')
 		}
+	}
+
+	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const { name, value } = e.target
+		setEditedWarehouse(prev => ({ ...prev, [name]: value }))
+	}
+
+	const handleSave = async (field: 'name' | 'address') => {
+		if (!selectedWarehouse) return
+
+		try {
+			const updatedData = {
+				...selectedWarehouse,
+				[field]: editedWarehouse[field],
+			}
+
+			const response = await axios.put(
+				`https://rtk-smart-warehouse.ru/api/v1/warehouse/${selectedWarehouse.id}`,
+				updatedData,
+				{ headers: { 'Content-Type': 'application/json' } }
+			)
+
+			console.log('✅ Обновлено:', response.data)
+			alert('Данные склада успешно обновлены!')
+
+			// обновляем данные в состоянии
+			setSelectedWarehouse(response.data)
+		} catch (error) {
+			console.error('Ошибка при обновлении склада:', error)
+			alert('Не удалось сохранить изменения')
+		}
+	}
+
+	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const { name, value } = e.target
+		setFormData(prev => ({ ...prev, [name]: value }))
+	}
+	const handleCategoryChange = (value: string) => {
+		setFormData(prev => ({ ...prev, category: value }))
+	}
+
+	const handleAddProduct = async (e: React.FormEvent) => {
+	  e.preventDefault()
+
+	  if (!selectedWarehouse) {
+	    alert('Сначала выберите склад')
+	    return
+	  }
+
+	  setLoading(true)
+	  try {
+			const [rowPart, shelfPart] = formData.current_position.split(',').map(s => s.trim())	
+	    const payload = {
+	      name: formData.name,
+	      category: formData.category,
+	      stock: Number(formData.stock),
+	      
+	      warehouse_id: selectedWarehouse.id,
+	    }
+
+	    const response = await axios.post(
+	      'https://rtk-smart-warehouse.ru/api/v1/products',
+	      payload,
+	      { headers: { 'Content-Type': 'application/json' } }
+	    )
+
+	    console.log('Товар добавлен:', response.data)
+	    alert('Товар успешно добавлен!')
+
+	    // обновляем список товаров текущего склада
+	    const updatedProducts = await axios.get(
+	      `https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`
+	    )
+	    setProducts(updatedProducts.data)
+
+	    // очистка формы
+	    setFormData({
+				name: '',
+				article: '',
+				category: '',
+				stock: '',
+				current_row: '',
+				current_shelf: '',
+				current_position: '',
+			})
+	  } catch (error) {
+	    console.error('Ошибка при добавлении товара:', error)
+	    alert('Не удалось добавить товар')
+	  } finally {
+	    setLoading(false)
+	  }
 	}
 
 	return (
@@ -133,7 +282,7 @@ function ListPage() {
 								{warehouses.map(wh => (
 									<div
 										key={wh.name}
-										onClick={() => handleSelect(wh)}
+										onClick={() => handleSelectWarehouse(wh)}
 										className={`flex justify-between items-center bg-[#F2F3F4] rounded-[15px] max-h-[60px] px-[10px] py-[10px] cursor-pointer transition-all border-[2px]
 												${
 													selectedWarehouse?.name === wh.name
@@ -177,13 +326,26 @@ function ListPage() {
 										>
 											Название
 										</Label>
-										<Input
-											type='text'
-											id='name'
-											className='bg-[#F2F3F4] h-[52px] rounded-[15px] !text-[20px] font-medium'
-											value={selectedWarehouse.name}
-											readOnly
-										/>
+										<div className='flex w-full items-center gap-2'>
+											<Input
+												type='text'
+												id='name'
+												name='name'
+												className='main-input'
+												value={editedWarehouse.name}
+												onChange={handleInputChange}
+											/>
+											<Button
+												type='submit'
+												className='warehouse-save-changes-button'
+												onClick={() => handleSave('name')}
+												disabled={
+													editedWarehouse.name == selectedWarehouse.name
+												}
+											>
+												Сохранить
+											</Button>
+										</div>
 									</div>
 
 									<div>
@@ -193,13 +355,26 @@ function ListPage() {
 										>
 											Адрес
 										</Label>
-										<Input
-											type='text'
-											id='address'
-											className='bg-[#F2F3F4] h-[52px] rounded-[15px] !text-[20px] font-medium'
-											value={selectedWarehouse.address}
-											readOnly
-										/>
+										<div className='flex w-full items-center gap-2'>
+											<Input
+												type='text'
+												id='address'
+												name='address'
+												className='main-input'
+												value={editedWarehouse.address}
+												onChange={handleInputChange}
+											/>
+											<Button
+												type='submit'
+												className='warehouse-save-changes-button'
+												onClick={() => handleSave('address')}
+												disabled={
+													editedWarehouse.address == selectedWarehouse.address
+												}
+											>
+												Сохранить
+											</Button>
+										</div>
 									</div>
 
 									{/* ==== Роботы ==== */}
@@ -222,7 +397,7 @@ function ListPage() {
 											</Button>
 										</div>
 
-										<div className='max-h-[150px] overflow-y-auto space-y-2'>
+										<div className='max-h-[770px] overflow-y-auto space-y-2'>
 											{robots.map(robot => (
 												<div
 													key={robot.id}
@@ -247,20 +422,140 @@ function ListPage() {
 											<span className='text-[20px] font-medium'>
 												Товары на складе
 											</span>
-											<Button
-												variant='outline'
-												size='icon'
-												aria-label='Add Product'
-												className='small-add-button'
-											>
-												<AddSmall
-													style={{ width: '22px', height: '22px' }}
-													fill='#7700FF'
-												/>
-											</Button>
+											<Dialog>
+												<DialogTrigger asChild>
+													<Button
+														variant='outline'
+														size='icon'
+														aria-label='Add Product'
+														className='small-add-button'
+													>
+														<AddSmall
+															style={{ width: '22px', height: '22px' }}
+															fill='#7700FF'
+														/>
+													</Button>
+												</DialogTrigger>
+												<DialogContent className='bg-[#F4F4F5] !p-[20px] !w-[558px]'>
+													<form onSubmit={handleAddProduct}>
+														<DialogHeader>
+															<DialogTitle className='dialog-title-text'>
+																Добавление товара
+															</DialogTitle>
+														</DialogHeader>
+														<div className='grid gap-4'>
+															<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+																<Label className='section-title' htmlFor='name'>
+																	Укажите название вашего товара
+																</Label>
+																<Input
+																	className='dialog-input-placeholder-text'
+																	id='name'
+																	name='name'
+																	value={formData.name}
+																	onChange={handleChange}
+																	placeholder='Например, Apple IPhone 17'
+																	required
+																/>
+															</div>
+															<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+																<Label
+																	className='section-title'
+																	htmlFor='address'
+																>
+																	Введите артикул товара
+																</Label>
+																<Input
+																	className='dialog-input-placeholder-text'
+																	id='article'
+																	name='article'
+																	value={formData.article}
+																	onChange={handleChange}
+																	placeholder='Например, 9573420'
+																	required
+																/>
+															</div>
+															<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+																<Label
+																	className='section-title'
+																	htmlFor='stock'
+																>
+																	Количество единиц товара (шт)
+																</Label>
+																<Input
+																	className='dialog-input-placeholder-text'
+																	id='stock'
+																	name='stock'
+																	value={formData.stock}
+																	onChange={handleChange}
+																	placeholder='Укажите максимальную вместимость склада'
+																	required
+																/>
+															</div>
+															<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+																<Label
+																	className='section-title'
+																	htmlFor='stock'
+																>
+																	Категория товара
+																</Label>
+																<Select onValueChange={handleCategoryChange}>
+																	<SelectTrigger className='w-full'>
+																		<SelectValue placeholder='Выберите категорию' />
+																	</SelectTrigger>
+																	<SelectContent>
+																		<SelectItem value='Смартфоны'>
+																			Смартфоны
+																		</SelectItem>
+																		<SelectItem value='Бытовая техника'>
+																			Бытовая техника
+																		</SelectItem>
+																		<SelectItem value='Комплектующие'>
+																			Комплектующие
+																		</SelectItem>
+																	</SelectContent>
+																</Select>
+															</div>
+															<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+																<Label
+																	className='section-title'
+																	htmlFor='current_position'
+																>
+																	Где расположен товар?
+																</Label>
+																<Input
+																	className='dialog-input-placeholder-text'
+																	id='current_position'
+																	name='current_position'
+																	value={formData.current_position}
+																	onChange={handleChange}
+																	placeholder='Координаты сектора, в формате 1-50, A-Z'
+																	required
+																/>
+															</div>
+														</div>
+														<DialogFooter className='mt-2'>
+															<DialogClose asChild>
+																<Button className='w-[50%] items-center rounded-[10px] text-[18px] text-white font-medium bg-[#FF4F12] cursor-pointer transition-all hover:brightness-90'>
+																	<X className='!h-5 !w-5' />
+																	Отмена
+																</Button>
+															</DialogClose>
+															<Button
+																type='submit'
+																className='w-[50%] rounded-[10px] text-[18px] text-white font-medium bg-[#7700FF] cursor-pointer transition-all hover:brightness-90'
+																disabled={loading}
+															>
+																<Check className='!h-5 !w-5' />
+																{loading ? 'Добавление...' : 'Подтвердить'}
+															</Button>
+														</DialogFooter>
+													</form>
+												</DialogContent>
+											</Dialog>
 										</div>
 
-										<div className='max-h-[150px] overflow-y-auto space-y-2'>
+										<div className='max-h-[770px] overflow-y-auto space-y-2'>
 											{products.map(p => (
 												<div
 													key={p.name}

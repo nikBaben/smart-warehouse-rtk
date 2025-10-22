@@ -13,6 +13,11 @@ body {
   min-height: 100vh;
 }
 
+input::placeholder {
+  color: #9699A3;
+  opacity: 1;
+}
+
 .pagename-font{
   @apply font-bold text-black text-[26px];
 }
@@ -56,7 +61,7 @@ body {
 }
 
 .input-description{
-  @apply text-[12px] font-medium text-[#BBBBBB] my-1
+  @apply text-[12px] px-[0.5px] font-light text-[#9699A3] my-1
 }
 
 .add-warehouse-button{
@@ -69,10 +74,24 @@ body {
   hover:border-[#7700FF];
 }
 
+.warehouse-save-changes-button{
+  @apply h-[52px] cursor-pointer 
+  border-transparent border-[2px] rounded-[10px] text-[20px] text-[#7700FF]
+  flex items-center justify-between bg-[#F2F3F4]
+  shadow-none
+  transition-all duration-200 ease-in-out
+  hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
+  hover:border-[#7700FF];
+}
+
 .dialog-input-placeholder-text{
-  @apply font-medium text-[16px] text-[#9699A3]
+  @apply font-medium text-[16px] text-black
 }
 
 .dialog-title-text{
-  @apply font-medium text-[24px] text-black
+  @apply font-medium text-[24px] text-black mb-3
+}
+
+.main-input{
+  @apply h-[52px] rounded-[10px] !text-[20px] font-medium
 }

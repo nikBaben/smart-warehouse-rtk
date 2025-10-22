@@ -43,7 +43,7 @@ export function AddWarehouseDialog(){
 		}
 
 			const response = await axios.post(
-				'http://51.250.97.137:8001/api/v1/warehouse',
+				'https://rtk-smart-warehouse.ru/api/v1/warehouse',
 				payload,
 				{ headers: { 'Content-Type': 'application/json' } }
 			)
@@ -67,17 +67,20 @@ export function AddWarehouseDialog(){
 					<AddLarge fill='#7700FF' className='!w-[20px] !h-[20px]' />
 				</Button>
 			</DialogTrigger>
-			<DialogContent className='bg-[#F4F4F5] !p-[10px] !w-[558px]'>
-				<form onSubmit={handleSubmit}>
+			<DialogContent className='bg-[#F4F4F5] !p-[20px] !w-[558px]'>
+				<form onSubmit={handleSubmit} className='grid gap-1'>
 					<DialogHeader>
 						<DialogTitle className='dialog-title-text'>
 							Добавление склада
 						</DialogTitle>
 					</DialogHeader>
 					<div className='grid gap-4'>
-						<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+						<div className='grid gap-0.5 bg-white p-[10px] rounded-[10px]'>
 							<Label className='section-title' htmlFor='name'>
 								Название склада
+							</Label>
+							<Label className='input-description'>
+								По названию вы сможете различать свои склады
 							</Label>
 							<Input
 								className='dialog-input-placeholder-text'
@@ -85,13 +88,16 @@ export function AddWarehouseDialog(){
 								name='name'
 								value={formData.name}
 								onChange={handleChange}
-								placeholder='Например, WB-1475349'
+								placeholder='WB-1475349'
 								required
 							/>
 						</div>
-						<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+						<div className='grid gap-0.5 bg-white p-[10px] rounded-[10px]'>
 							<Label className='section-title' htmlFor='address'>
 								Адрес склада
+							</Label>
+							<Label className='input-description'>
+								Местоположение вашего склада
 							</Label>
 							<Input
 								className='dialog-input-placeholder-text'
@@ -103,9 +109,13 @@ export function AddWarehouseDialog(){
 								required
 							/>
 						</div>
-						<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
+						<div className='grid gap-0.5 bg-white p-[10px] rounded-[10px]'>
 							<Label className='section-title' htmlFor='max_products'>
 								Вместимость склада
+							</Label>
+							<Label className='input-description'>
+								Максимальное количество товаров, которые может вместить склад
+								(шт)
 							</Label>
 							<Input
 								className='dialog-input-placeholder-text'
@@ -113,12 +123,12 @@ export function AddWarehouseDialog(){
 								name='max_products'
 								value={formData.max_products}
 								onChange={handleChange}
-								placeholder='Укажите максимальную вместимость склада'
+								placeholder='Целое число'
 								required
 							/>
 						</div>
 					</div>
-					<DialogFooter>
+					<DialogFooter className='mt-3'>
 						<DialogClose asChild>
 							<Button className='w-[50%] items-center rounded-[10px] text-[18px] text-white font-medium bg-[#FF4F12] cursor-pointer transition-all hover:brightness-90'>
 								<X className='!h-5 !w-5' />

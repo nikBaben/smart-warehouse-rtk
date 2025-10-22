@@ -128,8 +128,8 @@ function DashboardPage(){
     return (
 			<div className='flex bg-[#F4F4F5] min-h-screen'>
 				<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
-					<header className='bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-[300]'>
-						<span className='font-bold text-black text-[24px]'>Дашборд</span>
+					<header className='bg-white h-[60px] w-full flex items-center pl-[74px] pr-[10px] fixed top-0 left-0 z-[300]'>
+						<span className='pagename-font'>Дашборд</span>
 
 						<div className='ml-auto flex items-center gap-4'>
 							<div className='relative'>
@@ -170,7 +170,7 @@ function DashboardPage(){
 								)}
 							</div>
 							<div className='flex items-center space-x-5'>
-								<Button className='w-[319px] h-[38px] border-[#CCCCCC] border-[1px] rounded-[10px] font-400 text-[20px] text-[#7700FF] flex items-center justify-between px-4'>
+								<Button className='w-[319px] h-[38px] border-[#CCCCCC] border-[1px] rounded-[10px] text-[20px] text-[#7700FF] flex items-center justify-between px-4'>
 									Добавить робота или товар
 									<AddLarge fill='#7700FF' className='w-[20px] h-[20px]' />
 								</Button>
@@ -189,7 +189,7 @@ function DashboardPage(){
 									<h3 className='font-medium text-[18px] mb-1'>
 										Критические остатки
 									</h3>
-									<div className='flex flex-col items-center justify-between space-y-[-8px]'>
+									<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
 										<p className='text-[28px] font-bold'>102</p>
 										<p className='text-[10px] text-[#CCCCCC] font-light '>
 											{' '}
@@ -201,7 +201,7 @@ function DashboardPage(){
 									<h3 className='font-medium text-[18px] mb-1'>
 										Средний заряд батарей
 									</h3>
-									<div className='flex flex-col items-center justify-between space-y-[-8px]'>
+									<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
 										<p className='text-[28px] font-bold'>47%</p>
 										<p className='text-[10px] text-[#CCCCCC] font-light '>
 											{' '}
