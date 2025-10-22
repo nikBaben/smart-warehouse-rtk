@@ -1,3 +1,7 @@
+import time
+import random
+import string
+
 from uuid import uuid4
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -10,8 +14,21 @@ class RobotService:
     def __init__(self, repo: RobotRepository):
         self.repo = repo
 
+    async def create_id(self) -> str:
+        alphabet = string.digits + string.ascii_uppercase  # 0-9 + A-Z
+
+        def base36(num):
+            return ''.join(
+                alphabet[num // 36 ** i % 36] for i in reversed(range(2))
+            )
+
+        ts = int(time.time()) % 100000
+        rnd = random.randint(0, 1295)
+        return base36(ts % 1296) + base36(rnd)
+
     async def create_robot(self, data: RobotCreate) -> Robot:
-        robot_id = data.id or str(uuid4())
+
+        robot_id = await self.create_id()
 
         if data.warehouse_id is None or data.warehouse_id == "":
             raise HTTPException(status_code=400, detail="warehouse_id is required")
@@ -19,11 +36,11 @@ class RobotService:
         try:
             robot = await self.repo.create(
                 id=robot_id,
-                status=data.status,
-                battery_level=data.battery_level,
-                current_zone=data.current_zone,
-                current_row=data.current_row,
-                current_shelf=data.current_shelf,
+                status="idle",
+                battery_level=100,
+                current_zone="A",
+                current_row=0,
+                current_shelf=0,
                 warehouse_id=data.warehouse_id, 
                 check_warehouse_exists=True
             )

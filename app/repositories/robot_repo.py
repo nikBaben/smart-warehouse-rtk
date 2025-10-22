@@ -19,7 +19,7 @@ class RobotRepository:
         battery_level: int,
         current_zone: str,
         current_row: int,
-        current_shelf: int,
+        current_shelf: str,
         warehouse_id: str,
         check_warehouse_exists: bool = True,
     ) -> Robot:

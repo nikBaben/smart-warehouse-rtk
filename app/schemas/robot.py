@@ -1,7 +1,6 @@
 from datetime import datetime
 from typing import Optional, Literal
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field,conint
 
 
 RobotStatus = Literal["idle", "busy", "charging", "error"] 
@@ -9,14 +8,14 @@ RobotStatus = Literal["idle", "busy", "charging", "error"]
 
 class RobotBase(BaseModel):
     status: RobotStatus = "idle"
-    battery_level: int
+    battery_level: conint(ge=0) = Field(100, description="Всего товаров")
     current_zone: str = Field(..., min_length=1)
     current_row: int = 0
     current_shelf: int = 0
 
 
-class RobotCreate(RobotBase):
-    id: Optional[str] = Field(None, description="Если не передашь — сгенерируем UUID")
+class RobotCreate(BaseModel):
+    #id: Optional[str] = Field(None, description="Если не передашь — сгенерируем UUID")
     warehouse_id: Optional[str] = Field(None, description="ID склада, к которому привязан робот")
   
 

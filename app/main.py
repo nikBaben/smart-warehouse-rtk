@@ -7,6 +7,9 @@ from threading import Thread
 import asyncio
 from app.robot_emulator.emulator import run_robot_watcher 
 from app.ws.ws_manager import robot_events_broadcaster 
+from app.ws.products_events import continuous_product_snapshot_streamer
+
+
 app = FastAPI(title=settings.APP_NAME)
 
 app.add_middleware(
@@ -22,13 +25,11 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 app.include_router(ws_router.router, prefix="/api") 
 
-
+# Запускаем асинхронный watcher в фоне.
 @app.on_event("startup")
 async def start_robot_mover():
-    """
-    Запускаем асинхронный watcher в фоне.
-    """
     asyncio.create_task(run_robot_watcher(interval=5.0, max_workers=8))
     asyncio.create_task(robot_events_broadcaster())
+    asyncio.create_task(continuous_product_snapshot_streamer(interval=2.0))
     print("🤖 Robot watcher started as background async task.")
 

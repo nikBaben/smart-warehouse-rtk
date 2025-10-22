@@ -9,7 +9,7 @@ class Robot(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     status: Mapped[str] = mapped_column(String)
-    battery_level: Mapped[int] = mapped_column(Integer, default=0)  
+    battery_level: Mapped[int] = mapped_column(Integer, default=100)  
     last_update: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     current_zone: Mapped[str] = mapped_column(String)
     current_row: Mapped[int] = mapped_column(Integer, default=0)

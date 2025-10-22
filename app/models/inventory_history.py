@@ -48,15 +48,18 @@ class InventoryHistory(Base):
     )
 
     # снимок координат/зоны на момент события
-    current_zone: Mapped[Optional[str]] = mapped_column(String, default=None)
+    current_zone: Mapped[str] = mapped_column(String, default="Храненние")
     current_row: Mapped[int] = mapped_column(Integer, default=0)
-    current_shelf: Mapped[int] = mapped_column(Integer, default=0)
+    current_shelf: Mapped[str] = mapped_column(String, default="A")
 
     # (опционально) денормализованные данные товара на момент сканирования
     name: Mapped[Optional[str]] = mapped_column(String(255), default=None)
     category: Mapped[Optional[str]] = mapped_column(String(100), default=None)
+    article: Mapped[str] = mapped_column(String(100))
+    stock: Mapped[Optional[int]] = mapped_column(Integer)
     min_stock: Mapped[Optional[int]] = mapped_column(Integer, default=None)
     optimal_stock: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    status: Mapped[Optional[str]] = mapped_column(String(100), default=None)
 
     # meta
     created_at: Mapped[datetime] = mapped_column(
@@ -66,9 +69,3 @@ class InventoryHistory(Base):
         index=True,
     )
 
-    __table_args__ = (
-        # полезные композитные индексы для типичных выборок
-        Index("ix_inventory_history_wh_created", "warehouse_id", "created_at"),
-        Index("ix_inventory_history_prod_created", "product_id", "created_at"),
-        Index("ix_inventory_history_robot_created", "robot_id", "created_at"),
-    )

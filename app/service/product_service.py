@@ -11,6 +11,7 @@ class ProductService:
     def __init__(self, repo: ProductRepository):
         self.repo = repo
 
+
     async def create_product(self, data: ProductCreate) -> Product:
         product_id = data.id or str(uuid4())
 
@@ -27,6 +28,7 @@ class ProductService:
                 id=product_id,
                 name=data.name,
                 category=data.category,
+                article = data.article,
                 stock = data.stock,
                 current_zone = data.current_zone,
                 current_row = data.current_row,
