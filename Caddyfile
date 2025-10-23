@@ -1,4 +1,4 @@
-rtk-smart-warehouse.ru, www.rtk-smart-warehouse.ru {
+rtk-smart-warehouse.ru {
     encode zstd gzip
 
     reverse_proxy myapp-api:8000 {

@@ -10,10 +10,10 @@ from app.service.kkid_user_service import get_user_by_kkid, create_kkid_user  # 
 from app.db.session import get_session
 import secrets
 
-router = APIRouter(prefix="/api/v1", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/auth/login", response_model=AuthResponse)
+@router.post("/login", response_model=AuthResponse)
 async def login(
     login_data: LoginRequest,
     session: AsyncSession = Depends(get_session)
