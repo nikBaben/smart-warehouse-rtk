@@ -4,9 +4,10 @@ class Settings(BaseSettings):
     APP_NAME: str
     API_V1_PREFIX: str 
     DB_URL: str 
-    JWT_SECRET: str 
-    JWT_ALG: str 
-    ACCESS_TOKEN_EXPIRES_MINUTES: int
+    KEYCLOAK_URL: str
+    KEYCLOAK_REALM: str
+    KEYCLOAK_CLIENT_ID: str
+    KEYCLOAK_CLIENT_SECRET: str
     CORS_ORIGINS: list[str] 
 
     model_config = {
@@ -15,3 +16,4 @@ class Settings(BaseSettings):
     }
 
 settings = Settings()
+
