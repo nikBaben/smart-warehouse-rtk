@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, status,HTTPException,Query
 from app.schemas.warehouse import WarehouseCreate, WarehouseResponse
 from app.service.warehouse_service import WarwehouseService
 from app.api.deps import get_warehouse_service  
+from app.api.deps import keycloak_auth_middleware 
 
-
-router = APIRouter(prefix="/warehouse", tags=["warehouse"])
+router = APIRouter(prefix="/warehouse", tags=["warehouse"],dependencies=[Depends(keycloak_auth_middleware)])
 
 @router.post(
         "",

@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, status
 from app.schemas.robot import RobotCreate, RobotRead
 from app.service.robot_service import RobotService
 from app.api.deps import get_robot_service  
+from app.api.deps import keycloak_auth_middleware  
 
-router = APIRouter(prefix="/robots", tags=["robots"])
+router = APIRouter(prefix="/robots", tags=["robots"],dependencies=[Depends(keycloak_auth_middleware)])
 
 @router.post(
     "",

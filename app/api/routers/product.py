@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, status
 from app.schemas.product import ProductCreate, ProductRead
 from app.service.product_service import ProductService
 from app.api.deps import get_product_service  
-
-router = APIRouter(prefix="/products", tags=["products"])
+from app.api.deps import keycloak_auth_middleware
+  
+router = APIRouter(prefix="/products", tags=["products"],dependencies=[Depends(keycloak_auth_middleware)])
 
 @router.post(
     "",
