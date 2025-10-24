@@ -9,5 +9,7 @@ api_router = APIRouter()
 api_router.include_router(robots.router)
 api_router.include_router(product.router)
 api_router.include_router(warehouse.router)
+api_router.include_router(warehouse.router1)
 api_router.include_router(auth.router)
 api_router.include_router(user.router)
+

@@ -57,6 +57,25 @@ class RobotService:
             if code == "23503":  
                 raise HTTPException(status_code=422, detail="Related entity not found (FK violation)")
             raise HTTPException(status_code=500, detail=f"Integrity error: {detail}")
+    
+    async def delete_robot(self, robot_id: str) -> dict:
+        try:
+            await self.repo.delete(robot_id)
+            return {"detail": f"Робот с id '{robot_id}' успешно удалён."}
+
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+        except IntegrityError as e:
+            code = getattr(getattr(e, "orig", None), "pgcode", None) or getattr(getattr(e, "orig", None), "sqlstate", None)
+            detail = str(getattr(getattr(e, "orig", None), "diag", None) or e.orig or e)
+
+            if code == "23503":  # FK violation
+                raise HTTPException(
+                    status_code=422,
+                    detail="Невозможно удалить робота: на него ссылаются другие сущности (FK violation)."
+                )
+            raise HTTPException(status_code=500, detail=f"Integrity error: {detail}")
         
     async def get_robots_by_warehouse_id(self, warehouse_id: str):
         robots = await self.repo.get_all_by_warehouse_id(warehouse_id)

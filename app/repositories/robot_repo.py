@@ -48,7 +48,7 @@ class RobotRepository:
             raise e
         await self.session.refresh(robot)
         return robot
-
+    
     async def get(self, id: str) -> Optional[Robot]:
         return await self.session.scalar(
             select(Robot).where(Robot.id == id)
@@ -59,3 +59,19 @@ class RobotRepository:
             select(Robot).where(Robot.warehouse_id == warehosue_id)
         )
         return list(result.scalars().all())
+
+    async def delete(self, id: str):
+        robot = await self.session.scalar(
+            select(Robot).where(Robot.id == id)
+        )
+
+        if not robot:
+            raise ValueError(f"Робот с id '{id}' не найден.")
+
+        await self.session.delete(robot)
+
+        try:
+            await self.session.commit()
+        except IntegrityError as e:
+            await self.session.rollback()
+            raise e

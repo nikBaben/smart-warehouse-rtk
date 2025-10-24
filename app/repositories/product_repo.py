@@ -142,14 +142,21 @@ class ProductRepository:
 
     
 
-    async def delete(self, id: str) -> bool:
-        product = await self.get(id)
+    async def delete(self, id: str):
+        product = await self.session.scalar(
+            select(Product).where(Product.id == id)
+        )
+        
         if not product:
-            return False
+            raise ValueError(f"Товар с id '{id}' не найден.")
 
         await self.session.delete(product)
-        await self.session.commit()
-        return True
+
+        try:
+            await self.session.commit()
+        except IntegrityError as e:
+            await self.session.rollback()
+            raise e
     
     async def _bump_products_count(self, warehouse_id: str, delta: int) -> None:
         if not warehouse_id:

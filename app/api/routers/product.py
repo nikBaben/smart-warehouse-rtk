@@ -3,8 +3,8 @@ from app.schemas.product import ProductCreate, ProductRead
 from app.service.product_service import ProductService
 from app.api.deps import get_product_service  
 from app.api.deps import keycloak_auth_middleware
-  
-router = APIRouter(prefix="/products", tags=["products"],dependencies=[Depends(keycloak_auth_middleware)])
+
+router = APIRouter(prefix="/products", tags=["products"])#dependencies=[Depends(keycloak_auth_middleware)]
 
 @router.post(
     "",
@@ -18,6 +18,13 @@ async def create_product(
 ):
     product = await service.create_product(payload)
     return product
+
+@router.delete("/{product_id}")
+async def delete_product(
+    product_id: str,
+    service: ProductService = Depends(get_product_service),
+):
+    return await service.delete_product(product_id)
 
 @router.get(
     "/get_products_by_warehouse_id/{warehouse_id}",
