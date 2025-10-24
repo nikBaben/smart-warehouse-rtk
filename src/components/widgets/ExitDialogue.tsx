@@ -1,33 +1,59 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Button } from "../ui/button";
 import CheckLarge from "@atomaro/icons/24/navigation/CheckLarge";
 import CloseLarge from "@atomaro/icons/24/navigation/CloseLarge";
+import Release from '@atomaro/icons/24/action/Release'
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from '@/components/ui/dialog'
 
-export const ExitDialogue: React.FC<{ onStay: () => void; onExit: () => void }> = ({
-  onStay,
-  onExit,
-}) => {
+export function ExitDialogue(){
+  const handleExit = async () => {
+		localStorage.removeItem('token')
+    window.location.href = '/auth'
+	}
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/60 z-[600]">
-      <div className="bg-[#EFEFF0] h-[116px] w-[558px] rounded-[15px] p-[20px] flex flex-col justify-between">
-        <span className="text-[24px] font-medium">Вы точно хотите выйти?</span>
-        <div className="flex gap-[15px] items-center justify-center">
-          <Button
-            className="bg-[#7700FF] text-white text-[18px] flex-1 flex items-center gap-[8px] rounded-[10px]"
-            onClick={onStay}
-          >
-            <CloseLarge fill="white"/>
-            Остаться
-          </Button>
-          <Button
-            className="bg-[#FF2626] text-white text-[18px] flex-1 flex items-center gap-[8px] rounded-[10px]"
-            onClick={onExit}
-          >
-            <CheckLarge fill="white"/>
-            Выйти
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+		<Dialog>
+			<DialogTrigger>
+				<button title='Выход' className='transition-transform'>
+					<Release
+						fill='#9CA3AF'
+						className='hover:fill-white cursor-pointer transition-colors duration-200 w-[30px] h-auto'
+					/>
+				</button>
+			</DialogTrigger>
+			<DialogContent className='bg-[#F4F4F5] !p-[20px]'>
+					<DialogHeader>
+						<DialogTitle className='dialog-title-text'>
+							Вы точно хотите выйти?
+						</DialogTitle>
+					</DialogHeader>
+					<DialogFooter className='mt-3'>
+						<DialogClose asChild>
+					    <Button
+					    	className='bg-[#7700FF] text-white text-[18px] flex-1 flex items-center gap-[8px] rounded-[10px]'
+					    >
+					    	<CloseLarge fill='white' />
+					    	Остаться
+					    </Button>
+						</DialogClose>
+					  <Button
+					  	className='bg-[#FF2626] text-white text-[18px] flex-1 flex items-center gap-[8px] rounded-[10px]'
+					  	onClick={handleExit}
+					  >
+					  	<CheckLarge fill='white' />
+					  	Выйти
+					  </Button>
+					</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	)
 };
+export default ExitDialogue

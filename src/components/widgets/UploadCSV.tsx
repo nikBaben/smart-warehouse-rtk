@@ -35,9 +35,6 @@ export function UploadCSV(){
 			</DialogTrigger>
 			<DialogContent
 				className='max-w-[600px] bg-white text-black p-6 rounded-2xl'
-				onInteractOutside={e =>
-					e.preventDefault()
-				} /* запрет на закрытие окна при нажатии на пустое пространство */
 			>
 				<DialogHeader>
 					<DialogTitle>Загрузить CSV</DialogTitle>

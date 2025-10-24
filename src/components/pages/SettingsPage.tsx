@@ -1,5 +1,5 @@
+import axios from "axios";
 import { useState} from "react";
-
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import ChevronDown from '@atomaro/icons/24/navigation/ChevronDown';
@@ -19,187 +19,165 @@ import {
 } from '@/components/ui/select'
 
 function SettingsPage(){
-    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const [showNotifications, setShowNotifications] = useState(false);
-
-    return (
-			<div className='flex bg-[#F4F4F5] min-h-screen'>
-				<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
-					<header className='bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-[300]'>
-						<span className='page-name'>Параметры и уведомления</span>
-					</header>
-					<main className='flex-1 pt-[70px] pl-[10px] pr-[10px] pb-[10px]'>
-						<div className='grid grid-cols-2 gap-6 justify-between'>
-							<section className='flex flex-col gap-[10px]'>
-								<div className='bg-white rounded-[15px] p-[10px] h-[70px] flex justify-between'>
-									<div className='flex items-center gap-[10px]'>
-										<Avatar className='h-12 w-12'>
-											<AvatarImage src='https://github.com/shadcn.png' />
-											<AvatarFallback>CN</AvatarFallback>
-										</Avatar>
-										<div className='flex flex-col text-black'>
-											<span className='text-[18px] font-medium'>
-												Владимир Смолин
-											</span>
-											<span className='text-[12px] font-light'>
-												логин: vvsmolin@gmail.com
-											</span>
-										</div>
+  const [showNotifications, setShowNotifications] = useState(false);
+	const [email, setEmail] = useState('')
+	const [password, setPassword] = useState('')
+	const [loading, setLoading] = useState(false)
+	
+  return (
+		<div className='flex bg-[#F4F4F5] min-h-screen'>
+			<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
+				<header className='bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-[300]'>
+					<span className='page-name'>Параметры и уведомления</span>
+				</header>
+				<main className='flex-1 pt-[70px] pl-[10px] pr-[10px] pb-[10px]'>
+					<div className='grid grid-cols-12 gap-3 justify-between'>
+						<section className='flex flex-col col-span-6 gap-[10px]'>
+							<div className='bg-white rounded-[15px] p-[10px] h-[70px] flex justify-between'>
+								<div className='flex items-center gap-[10px]'>
+									<Avatar className='h-12 w-12'>
+										<AvatarImage src='https://github.com/shadcn.png' />
+										<AvatarFallback>CN</AvatarFallback>
+									</Avatar>
+									<div className='flex flex-col text-black'>
+										<span className='text-[18px] font-medium'>
+											Владимир Смолин
+										</span>
+										<span className='text-[12px] font-light'>
+											логин: vvsmolin@gmail.com
+										</span>
 									</div>
-									<span className='flex items-center'> работник склада</span>
 								</div>
-
-								<div className='bg-white rounded-[15px] p-[10px] h-[650px] flex flex-col'>
-									<h2 className='font-medium text-[24px] mb-[15px]'>
-										Профиль и настройки
+								<span className='flex items-center'> работник склада</span>
+							</div>
+							<div className='bg-white rounded-[15px] p-[10px] h-[650px] flex flex-col'>
+								<h2 className='font-medium text-[24px] mb-[15px]'>
+									Профиль и настройки
+								</h2>
+								<div className='flex flex-col gap-[15px]'>
+									<div className='flex flex-col'>
+										<Label className='section-title'>Имя</Label>
+										<Input
+											className='main-input !text-[16px]'
+											id='name'
+											name='name'
+											value='Владимир'
+										></Input>
+									</div>
+									<div className='flex flex-col'>
+										<Label className='section-title'>Фамилия</Label>
+										<Input
+											className='main-input !text-[16px]'
+											id='surname'
+											name='surname'
+											value='Смолин'
+										></Input>
+									</div>
+									<div className='flex flex-col'>
+										<Label className='section-title'>Логин</Label>
+										<Label className='input-description'>
+											Укажите свою почту или номер телефона, чтобы мы могли
+											Вас идентифицировать
+										</Label>
+										<Input
+											className='main-input !text-[16px]'
+											id='login'
+											name='login'
+											placeholder='+79634791447'
+											value='vvsmolin@gmail.com'
+										/>
+									</div>
+									<div className='flex flex-col'>
+										<Label className='section-title'>
+											Почта для отправки отчетов
+										</Label>
+										<Label className='input-description'>
+											Сюда мы будем отправлять Вам отчеты о проверках
+										</Label>
+										<Input
+											className='main-input !text-[16px]'
+											id='email'
+											name='email'
+											placeholder='voenmeh@gmail.com'
+										></Input>
+									</div>
+									<div className='relative'>
+										<span className='section-title'>Роль</span>
+										<Select>
+											<SelectTrigger className='w-full !h-[52px]'>
+												<SelectValue placeholder='Выберите категорию' />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value='Смартфоны'>
+													Пользователь склада
+												</SelectItem>
+												<SelectItem value='Бытовая техника'>
+													Администратор
+												</SelectItem>
+												<SelectItem value='Комплектующие'>
+													Бро ты умрешь и т.д.
+												</SelectItem>
+											</SelectContent>
+										</Select>
+									</div>
+									<div className='flex gap-[12px] items-center'>
+										<Switch
+											checked={showNotifications}
+											onCheckedChange={setShowNotifications}
+											className='data-[state=checked]:bg-[#7700FF] data-[state=unchecked]:bg-gray-300 h-[20px] w-[36px]'
+										/>
+										<span className='text-[20px]'>
+											Отображать уведомления в интерфейсе
+										</span>
+									</div>
+									<div className='flex gap-[10px]'>
+										<Button className='flex-1 h-[40px] bg-white border-[2px] border-[#FF4F12] text-[#FF4F12] text-[18px] rounded-[10px]'>
+											<SignOut
+												fill='#FF4F12'
+												className='h-[14px] w-auto'
+											></SignOut>
+											Выйти
+										</Button>
+										<Button className='flex-1 h-[40px] bg-white border-[2px] border-[#5A606D] text-[#5A606D] text-[18px] rounded-[10px]'>
+											<CloseLarge
+												fill='#5A606D'
+												className='h-[14px] w-auto'
+											></CloseLarge>
+											Отменить
+										</Button>
+										<Button className='flex-1 h-[40px] bg-white border-[2px] border-[#7700FF] text-[#7700FF] text-[18px] rounded-[10px]'>
+											<CheckLarge
+												fill='#7700FF'
+												className='h-[14px] w-auto'
+											></CheckLarge>
+											Сохранить
+										</Button>
+									</div>
+									<div className='flex items-center justify-center pt-[8px]'>
+										<img
+											src='/src/assets/images/warehouse-img 1.svg'
+											alt='Warehouse'
+											className='w-[300px] h-[200px]'
+										/>
+									</div>
+								</div>
+							</div>
+						</section>
+						<section className='flex flex-col col-span-6'>
+							<div className='bg-white rounded-[15px] p-[6px] pl-[12px] justify-between h-[920px]'>
+								<div className='flex flex-col p-[10px]'>
+									<h2 className='text-[24px] font-medium text-black mb-[10px]'>
+										Уведомления
 									</h2>
-									<div className='flex flex-col gap-[15px]'>
-										<div className='flex flex-col'>
-											<Label className='section-title'>Имя</Label>
-											<Input
-												className='main-input !text-[16px]'
-												id='name'
-												name='name'
-												value='Владимир'
-											></Input>
-										</div>
-										<div className='flex flex-col'>
-											<span className='section-title'>Фамилия</span>
-											<Input
-												className='main-input !text-[16px]'
-												id='surname'
-												name='surname'
-												value='Смолин'
-											></Input>
-										</div>
-										<div className='flex flex-col'>
-											<Label className='section-title'>Логин</Label>
-											<Label className='input-description'>
-												Укажите свою почту или номер телефона, чтобы мы могли
-												Вас идентифицировать
-											</Label>
-											<Input
-												className='main-input !text-[16px]'
-												id='login'
-												name='login'
-												placeholder='+79634791447'
-												value='vvsmolin@gmail.com'
-											/>
-										</div>
-										<div className='flex flex-col'>
-											<Label className='section-title'>
-												Почта для отправки отчетов
-											</Label>
-											<Label className='input-description'>
-												Сюда мы будем отправлять Вам отчеты о проверках
-											</Label>
-											<Input
-												className='main-input !text-[16px]'
-												id='email'
-												name='email'
-												placeholder='voenmeh@gmail.com'
-											></Input>
-										</div>
-										<div className='relative'>
-											<span className='section-title'>Роль</span>
-											<Select>
-												<SelectTrigger className='w-full !h-[52px]'>
-													<SelectValue placeholder='Выберите категорию' />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value='Смартфоны'>
-														Пользователь склада
-													</SelectItem>
-													<SelectItem value='Бытовая техника'>
-														Администратор
-													</SelectItem>
-													<SelectItem value='Комплектующие'>
-														Бро ты умрешь и т.д.
-													</SelectItem>
-												</SelectContent>
-											</Select>
-
-											{isDropdownOpen && (
-												<div className='absolute right-0 mt-1 w-auto bg-white border border-gray-300 rounded-[10px] shadow-lg z-50 text-[#7700FF] text-[20px]'>
-													<button
-														className='w-full text-left px-4 py-2 hover:bg-gray-100'
-														onClick={() => console.log('Действие 1')}
-													>
-														Сигма убийца
-													</button>
-													<button
-														className='w-full text-left px-4 py-2 hover:bg-gray-100'
-														onClick={() => console.log('Действие 2')}
-													>
-														Крутой тип
-													</button>
-													<button
-														className='w-full text-left px-4 py-2 hover:bg-gray-100'
-														onClick={() => console.log('Действие 3')}
-													>
-														Мистер бист
-													</button>
-												</div>
-											)}
-										</div>
-										<div className='flex gap-[12px] items-center'>
-											<Switch
-												checked={showNotifications}
-												onCheckedChange={setShowNotifications}
-												className='data-[state=checked]:bg-[#7700FF] data-[state=unchecked]:bg-gray-300 h-[20px] w-[36px]'
-											/>
-											<span className='text-[20px]'>
-												Отображать уведомления в интерфейсе
-											</span>
-										</div>
-										<div className='flex gap-[10px]'>
-											<Button className='flex-1 h-[40px] bg-white border-[2px] border-[#FF4F12] text-[#FF4F12] text-[18px] rounded-[10px]'>
-												<SignOut
-													fill='#FF4F12'
-													className='h-[14px] w-auto'
-												></SignOut>
-												Выйти
-											</Button>
-											<Button className='flex-1 h-[40px] bg-white border-[2px] border-[#5A606D] text-[#5A606D] text-[18px] rounded-[10px]'>
-												<CloseLarge
-													fill='#5A606D'
-													className='h-[14px] w-auto'
-												></CloseLarge>
-												Отменить изменения
-											</Button>
-											<Button className='flex-1 h-[40px] bg-white border-[2px] border-[#7700FF] text-[#7700FF] text-[18px] rounded-[10px]'>
-												<CheckLarge
-													fill='#7700FF'
-													className='h-[14px] w-auto'
-												></CheckLarge>
-												Сохранить изменения
-											</Button>
-										</div>
-										<div className='flex items-center justify-center pt-[8px]'>
-											<img
-												src='/src/assets/images/warehouse-img 1.svg'
-												alt='Warehouse'
-												className='w-[300px] h-[200px]'
-											/>
-										</div>
-									</div>
+									<Notification />
 								</div>
-							</section>
-							<section>
-								<div className='bg-white rounded-[15px] p-[6px] pl-[12px] flex flex-col justify-between h-[920px]'>
-									<div className='flex flex-col p-[10px]'>
-										<h2 className='text-[24px] font-medium text-black mb-[10px]'>
-											Уведомления
-										</h2>
-										<Notification />
-									</div>
-								</div>
-							</section>
-						</div>
-					</main>
-				</div>
+							</div>
+						</section>
+					</div>
+				</main>
 			</div>
-		)
+		</div>
+	)
 }
 
 export default SettingsPage;

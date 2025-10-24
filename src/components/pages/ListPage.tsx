@@ -7,6 +7,8 @@ import AddSmall from '@atomaro/icons/24/action/AddSmall'
 import { UserAvatar } from '../ui/UserAvatar.tsx'
 import { AddWarehouseDialog } from '../ui/AddWarehouseDialog.tsx'
 import { Check } from 'lucide-react'
+import { toast } from 'sonner'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Select,
 	SelectContent,
@@ -47,10 +49,12 @@ type Warehouse = {
 	name: string
 	address: string
 	products_count: number
+	max_products: number
 	id: string
 }
 
 function ListPage() {
+	const token = localStorage.getItem('token')
 	//-----ОБРАБОТКА СОСТОЯНИЙ-----
 	const [warehouses, setWarehouses] = useState<Warehouse[]>([])
 	const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null)
@@ -73,6 +77,7 @@ function ListPage() {
 	const [editedWarehouse, setEditedWarehouse] = useState({
 		name: '',
 		address: '',
+		max_products: 0,
 	})
 
 	const [editedProduct, setEditedProduct] = useState<WhProduct | null>(null)
@@ -83,23 +88,47 @@ function ListPage() {
 
 	//-----ЗАГРУЗКА СПИСКА СКЛАДОВ-----
 	useEffect(() => {
+		let timeout: ReturnType<typeof setTimeout>
+
 		const fetchWarehouses = async () => {
+
+			setLoading(true)
+			setError(null)
+
+			timeout = setTimeout(() => {
+				setError('Не удалось получить данные о складах')
+				setLoading(false)
+			}, 5000)
+
 			try {
 				const response = await axios.get(
 					'https://rtk-smart-warehouse.ru/api/v1/warehouse/all',
 					{
-						headers: { 'Content-Type': 'application/json' },
+						headers: {
+							Authorization: `Bearer ${token}`,
+							'Content-Type': 'application/json',
+						},
 					}
 				)
+
 				console.log('Ответ сервера:', response.data)
 				setWarehouses(response.data)
+				setError(null)
 			} catch (err) {
 				console.error('Ошибка загрузки:', err)
+				/* toast.error('Не удалось загрузить склады') */
 				setError('Не удалось загрузить склады')
+			} finally {
+				clearTimeout(timeout)
+				setLoading(false)
 			}
 		}
 
 		fetchWarehouses()
+
+		return () => {
+			clearTimeout(timeout)
+		}
 	}, [])
 
 	useEffect(() => {
@@ -107,6 +136,7 @@ function ListPage() {
 			setEditedWarehouse({
 				name: selectedWarehouse.name || '',
 				address: selectedWarehouse.address || '',
+				max_products: selectedWarehouse.max_products || 0,
 			})
 		}
 	}, [selectedWarehouse])
@@ -139,7 +169,12 @@ function ListPage() {
 			setRobots(robotsById.data)
 
 			const productsById = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${warehouse.id}`
+				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${warehouse.id}`,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+					},
+				}
 			)
 			console.log('Товары на складе:', productsById.data)
 			setProducts(productsById.data)
@@ -167,7 +202,7 @@ function ListPage() {
 			)
 
 			console.log('Робот успешно добавлен:', response.data)
-			alert('Робот успешно добавлен!')
+			toast.success(`Робот успешно добавлен на склад ${selectedWarehouse.name}`)
 
 			// обновляем список роботов для текущего склада
 			const robotsResponse = await axios.get(
@@ -241,18 +276,29 @@ function ListPage() {
 			}
 
 	    const response = await axios.post(
-	      'https://rtk-smart-warehouse.ru/api/v1/products',
-	      payload,
-	      { headers: { 'Content-Type': 'application/json' } }
-	    )
+				'https://rtk-smart-warehouse.ru/api/v1/products',
+				payload,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						'Content-Type': 'application/json',
+					},
+				}
+			)
 
 	    console.log('Товар добавлен:', response.data)
 	    alert('Товар успешно добавлен!')
 
 	    //обновляем список товаров текущего склада
-	    const updatedProducts = await axios.get(
-	      `https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`
-	    )
+			const updatedProducts = await axios.get(
+				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						'Content-Type': 'application/json',
+					},
+				}
+			)
 	    setProducts(updatedProducts.data)
 
 	    //очистка формы
@@ -307,13 +353,18 @@ function ListPage() {
 
 			// обновляем список товаров
 			const updatedProducts = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`
+				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+					},
+				}
 			)
 			
 			setProducts(updatedProducts.data)
 		} catch (error) {
 			console.error('Ошибка при обновлении товара:', error)
-			alert('Не удалось обновить товар')
+			toast.error('Не удалось обновить товар')
 		} finally {
 			setLoading(false)
 		}
@@ -332,36 +383,59 @@ function ListPage() {
 
 				<main className='flex-1 p-3 h-full'>
 					<div className='grid grid-cols-24 gap-3 justify-between h-full'>
-						<section className='bg-white rounded-[15px] col-span-10 h-full p-[10px] overflow-y-auto'>
+						<section className='bg-white rounded-[15px] col-span-10 h-full p-[10px]'>
 							<h2 className='big-section-font mb-3'>Список складов</h2>
-							<div className='space-y-2'>
-								{warehouses.map(wh => (
-									<div
-										key={wh.name}
-										onClick={() => handleSelectWarehouse(wh)}
-										className={`flex justify-between items-center bg-[#F2F3F4] rounded-[10px] max-h-[60px] px-[10px] py-[10px] cursor-pointer transition-all border-[2px]
-												${
-													selectedWarehouse?.name === wh.name
-														? 'border-[2px] border-[#7700FF] shadow-[0_0_10px_rgba(119,0,255,0.3)]'
-														: 'border border-transparent hover:border-[2px] hover:border-[#7700FF33] hover:shadow-[0_0_10px_rgba(119,0,255,0.3)]'
-												}`}
-									>
-										<div className='flex items-center'>
-											<span className='text-[20px] font-medium text-black'>
-												{wh.name}
-											</span>
-										</div>
-										<div className='text-right space-y-0'>
-											<div className='text-[14px] font-normal text-[#5A606D]'>
-												город: {wh.address}
+							{loading ? (
+								<div className='space-y-2'>
+									{[...Array(4)].map((_, i) => (
+										<div
+											key={i}
+											className='flex justify-between items-center bg-[#F2F3F4] rounded-[10px] px-[10px] py-[10px]'
+										>
+											<div className='flex items-center gap-3'>
+												<Skeleton className='bg-[#CDCED2] h-[20px] w-[120px] rounded-md' />
 											</div>
-											<div className='text-[14px] font-normal text-[#5A606D]'>
-												текущее количество товаров: {wh.products_count}
+											<div className='text-right space-y-1'>
+												<Skeleton className='bg-[#CDCED2] h-[14px] w-[180px] rounded-md' />
+												<Skeleton className='bg-[#CDCED2] h-[14px] w-[200px] rounded-md' />
 											</div>
 										</div>
-									</div>
-								))}
-							</div>
+									))}
+								</div>
+							) : error ? (
+								<div className='flex items-center justify-center font-medium text-center h-full text-[#9699A3] text-[24px]'>
+									не удалось получить данные о складах
+								</div>
+							) : (
+								<div className='space-y-2 overflow-y-hidden max-h-full'>
+									{warehouses.map(wh => (
+										<div
+											key={wh.name}
+											onClick={() => handleSelectWarehouse(wh)}
+											className={`flex justify-between items-center bg-[#F2F3F4] rounded-[10px] max-h-[60px] px-[10px] py-[10px] cursor-pointer transition-all border-[2px]
+													${
+														selectedWarehouse?.name === wh.name
+															? 'border-[2px] border-[#7700FF] shadow-[0_0_10px_rgba(119,0,255,0.3)]'
+															: 'border border-transparent hover:border-[2px] hover:border-[#7700FF33] hover:shadow-[0_0_10px_rgba(119,0,255,0.3)]'
+													}`}
+										>
+											<div className='flex items-center'>
+												<span className='text-[20px] font-medium text-black'>
+													{wh.name}
+												</span>
+											</div>
+											<div className='text-right space-y-0'>
+												<div className='text-[14px] font-normal text-[#5A606D]'>
+													город: {wh.address}
+												</div>
+												<div className='text-[14px] font-normal text-[#5A606D]'>
+													текущее количество товаров: {wh.products_count}
+												</div>
+											</div>
+										</div>
+									))}
+								</div>
+							)}
 						</section>
 
 						<section className='bg-white rounded-[15px] col-span-14 h-full p-[10px] space-y-5'>
@@ -433,6 +507,36 @@ function ListPage() {
 										</div>
 									</div>
 
+									<div>
+										<Label
+											htmlFor='name'
+											className='text-[20px] font-medium text-black'
+										>
+											Вместимость
+										</Label>
+										<div className='flex w-full items-center gap-2'>
+											<Input
+												type='text'
+												id='name'
+												name='name'
+												className='main-input'
+												value={editedWarehouse.max_products}
+												onChange={handleInputChange}
+											/>
+											<Button
+												type='submit'
+												className='warehouse-save-changes-button'
+												onClick={() => handleSave('name')}
+												disabled={
+													editedWarehouse.max_products ==
+													selectedWarehouse.max_products
+												}
+											>
+												Сохранить
+											</Button>
+										</div>
+									</div>
+
 									{/* ==== Роботы ==== */}
 									<div>
 										<div className='flex justify-between items-center mb-0'>
@@ -453,7 +557,7 @@ function ListPage() {
 											</Button>
 										</div>
 
-										<div className='max-h-[770px] overflow-y-auto space-y-2'>
+										<div className='max-h-[300px] overflow-y-auto space-y-2'>
 											{robots.map(robot => (
 												<div
 													key={robot.id}
@@ -473,7 +577,6 @@ function ListPage() {
 
 									{/* ==== Товары ==== */}
 									<div>
-										{/* 										<div className='grid w-full items-center gap-1'></div> */}
 										<div className='flex justify-between items-center mb-0'>
 											<span className='text-[20px] font-medium'>
 												Товары на складе

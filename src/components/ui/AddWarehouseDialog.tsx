@@ -16,6 +16,7 @@ import AddLarge from '@atomaro/icons/24/action/AddLarge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { toast } from 'sonner'
 
 export function AddWarehouseDialog(){
   const [formData, setFormData] = useState({
@@ -49,11 +50,11 @@ export function AddWarehouseDialog(){
 			)
 
 			console.log('Склад успешно добавлен:', response.data)
-			alert('Склад успешно добавлен!')
+			toast.success(`Склад ${formData.name} успешно добавлен`)
 			setFormData({ name: '', address: '', max_products: '', })
 		} catch (error) {
 			console.error('Ошибка при добавлении склада:', error)
-			alert('Ошибка при добавлении склада')
+			toast.error('Ошибка при добавлении склада')
 		} finally {
 			setLoading(false)
 		}

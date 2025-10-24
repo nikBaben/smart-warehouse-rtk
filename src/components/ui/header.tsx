@@ -6,7 +6,7 @@ export function Header() {
     <nav className="sticky top-0 left-0 z-50 w-screen bg-white border-b border-gray-200 backdrop-blur-md">
       <div className="flex items-center justify-between h-[98px] px-4 sm:px-6 lg:px-8">
         <div className="w-[175px] h-[56px] flex gap-[3px] relative">
-            <a href="#/">
+            <a href="/">
                 <img src={Logo} alt="RTK" className="h-[56] w-auto object-contain" />
             </a>
             <div className="flex flex-col justify-center absolute bottom-[0px] right-[0px]">

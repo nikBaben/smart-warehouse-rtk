@@ -35,29 +35,12 @@ export function Navbar() {
 					</nav>
 				</div>
 
-				<div className='flex flex-col items-center absolute bottom-[20.15px]'>
-					<nav className='flex gap-[26px] flex-col'>
+				<div className='flex flex-col items-center absolute bottom-[20.15px] w-[30px]'>
+					<nav className='flex gap-[26px] flex-col items-center'>
 						<NavItem icon={Settings} label='Настройки' to='/settings' />
-						<button
-							onClick={() => setShowExit(true)}
-							title='Выход'
-						>
-							<Release
-								fill='#9CA3AF'
-								className='cursor-pointer hover:fill-white transition-colors duration-200 w-[30px] h-auto'
-							/>
-						</button>
+						<ExitDialogue />
 					</nav>
 				</div>
-				{showExit && (
-					<ExitDialogue
-						onStay={() => setShowExit(false)}
-						onExit={() => {
-							setShowExit(false)
-							navigate('/auth')
-						}}
-					/>
-				)}
 			</div>
 		)
 }
