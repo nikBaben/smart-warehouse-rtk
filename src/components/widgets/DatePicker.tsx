@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import { format } from "date-fns"
-
 import ChevronDown from '@atomaro/icons/24/navigation/ChevronDown';
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -12,10 +11,13 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 
-export function DatePicker() {
-  const [startDate, setStartDate] = React.useState<Date>()
-  const [endDate, setEndDate] = React.useState<Date>()
+interface DatePickerProps {
+  startDate?: Date
+  endDate?: Date
+  onChange?: (start: Date | undefined, end: Date | undefined) => void
+}
 
+export function DatePicker({ startDate, endDate, onChange }: DatePickerProps) {
   return (
     <div className="flex gap-[6px]">
       <Popover>
@@ -30,12 +32,14 @@ export function DatePicker() {
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0">
           <Calendar 
-                mode="single" 
-                selected={startDate} 
-                onSelect={setStartDate} 
-                className="w-[150px] h-auto [--cell-size:18px] !bg-white rounded-[5px] !shadow-none !text-[10px] border-[#7700FF]"/>
+            mode="single" 
+            selected={startDate} 
+            onSelect={(date) => onChange?.(date, endDate)} 
+            className="w-[150px] h-auto [--cell-size:18px] !bg-white rounded-[5px] !shadow-none !text-[10px] border-[#7700FF]"
+          />
         </PopoverContent>
       </Popover>
+
       <Popover>
         <PopoverTrigger asChild>
           <Button
@@ -48,13 +52,12 @@ export function DatePicker() {
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0">
           <Calendar
-                mode="single"
-                selected={endDate}
-                onSelect={setEndDate}
-                disabled={(date) => startDate ? date < startDate : false}
-                className="w-[150px] h-auto [--cell-size:18px] !bg-white rounded-[5px] !shadow-none border-[#7700FF]"
-            />
-
+            mode="single"
+            selected={endDate}
+            onSelect={(date) => onChange?.(startDate, date)}
+            disabled={(date) => startDate ? date < startDate : false}
+            className="w-[150px] h-auto [--cell-size:18px] !bg-white rounded-[5px] !shadow-none border-[#7700FF]"
+          />
         </PopoverContent>
       </Popover>
     </div>
