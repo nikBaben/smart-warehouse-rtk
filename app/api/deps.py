@@ -6,6 +6,8 @@ from app.repositories.product_repo import ProductRepository
 from app.service.product_service import ProductService
 from app.repositories.warehouse_repo import WarehouseRepository
 from app.service.warehouse_service import WarwehouseService
+from app.repositories.inventory_history_repo import InventoryHistoryRepository
+from app.service.inventory_history_service import InventoryHistoryService
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.service.auth_service import auth_service
 from app.db.session import get_session
@@ -33,6 +35,12 @@ def get_warehouse_repo(db: AsyncSession = Depends(get_session)) -> WarehouseRepo
 
 def get_warehouse_service(repo: WarehouseRepository = Depends(get_warehouse_repo)) -> WarwehouseService:
     return WarwehouseService(repo)
+
+def get_inventory_history_repo(db: AsyncSession = Depends(get_session)) -> InventoryHistoryRepository:
+    return InventoryHistoryRepository(db)
+
+def get_inventory_history_service(repo: InventoryHistoryRepository = Depends(get_inventory_history_repo)) -> InventoryHistoryService:
+    return InventoryHistoryService(repo)
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
 	"""Зависимость для получения текущего пользователя"""
