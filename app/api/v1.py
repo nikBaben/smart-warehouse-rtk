@@ -13,3 +13,4 @@ api_router.include_router(warehouse.router)
 api_router.include_router(inventory_history.router)
 api_router.include_router(auth.router)
 api_router.include_router(user.router)
+
