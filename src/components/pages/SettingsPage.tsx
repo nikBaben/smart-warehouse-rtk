@@ -1,6 +1,5 @@
 import axios from "axios";
-import { useEffect } from "react";
-import { useState} from "react";
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useUserStore } from '../../store/useUserStore.tsx'
 import { Input } from "@/components/ui/input";

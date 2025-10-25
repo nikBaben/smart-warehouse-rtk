@@ -1,5 +1,7 @@
 import axios from 'axios'
 import { useEffect, useState } from 'react'
+import { useUserStore } from '../../store/useUserStore.tsx'
+import { useWarehouseStore } from '../../store/useWarehouseStore.tsx'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -35,6 +37,7 @@ type WhRobot = {
 }
 
 type WhProduct = {
+	id: string
 	name: string
 	article: string
 	category: string
@@ -56,10 +59,29 @@ type Warehouse = {
 function ListPage() {
 	const token = localStorage.getItem('token')
 	//-----ОБРАБОТКА СОСТОЯНИЙ-----
-	const [warehouses, setWarehouses] = useState<Warehouse[]>([])
-	const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null)
-	
-	
+	const { user } = useUserStore()
+
+	const {
+		warehouses,
+		loading,
+		error,
+		fetchWarehouses,
+		selectedWarehouse,
+		setSelectedWarehouse,
+		updateWarehouse,
+	} = useWarehouseStore()
+
+	const [editedWarehouse, setEditedWarehouse] = useState({
+		name: '',
+		address: '',
+		max_products: 0,
+	})
+
+	const [editedProduct, setEditedProduct] = useState<WhProduct | null>(null)
+	const [products, setProducts] = useState<WhProduct[]>([])
+
+	const [robots, setRobots] = useState<WhRobot[]>([])
+
 	const [formData, setFormData] = useState({
 		name: '',
 		article: '',
@@ -69,80 +91,36 @@ function ListPage() {
 		current_shelf: '',
 		current_position: '',
 	})
-	
-	const [robots, setRobots] = useState<WhRobot[]>([])
-	
-	const [products, setProducts] = useState<WhProduct[]>([])
-	
-	const [editedWarehouse, setEditedWarehouse] = useState({
-		name: '',
-		address: '',
-		max_products: 0,
-	})
 
-	const [editedProduct, setEditedProduct] = useState<WhProduct | null>(null)
-	
-	const [loading, setLoading] = useState(false)
-	const [error, setError] = useState<string | null>(null)
-	
+	/* 	const [loading, setLoading] = useState(false) */
+	/* 	const [error, setError] = useState<string | null>(null) */
+
+	let denyAdminAccess = !(user?.role === 'operator')
 
 	//-----ЗАГРУЗКА СПИСКА СКЛАДОВ-----
 	useEffect(() => {
-		let timeout: ReturnType<typeof setTimeout>
-
-		const fetchWarehouses = async () => {
-
-			setLoading(true)
-			setError(null)
-
-			timeout = setTimeout(() => {
-				setError('Не удалось получить данные о складах')
-				setLoading(false)
-			}, 5000)
-
-			try {
-				const response = await axios.get(
-					'https://rtk-smart-warehouse.ru/api/v1/warehouses',
-					{
-						headers: {
-							Authorization: `Bearer ${token}`,
-							'Content-Type': 'application/json',
-						},
-					}
-				)
-
-				console.log('Ответ сервера:', response.data)
-				setWarehouses(response.data)
-				setError(null)
-			} catch (err) {
-				console.error('Ошибка загрузки:', err)
-				/* toast.error('Не удалось загрузить склады') */
-				setError('Не удалось загрузить склады')
-			} finally {
-				clearTimeout(timeout)
-				setLoading(false)
-			}
+		if (!token) {
+			console.warn('Токен отсутствует — пользователь не авторизован')
+			alert('Токен отсутствует — пользователь не авторизован')
+			return
 		}
+		fetchWarehouses(token)
+	}, [token])
 
-		fetchWarehouses()
-
-		return () => {
-			clearTimeout(timeout)
-		}
-	}, [])
-
+	//-----СИНХРОНИЗАЦИЯ ДАННЫХ ПРИ ВЫБОРЕ СКЛАДА-----
 	useEffect(() => {
 		if (selectedWarehouse) {
 			setEditedWarehouse({
-				name: selectedWarehouse.name || '',
-				address: selectedWarehouse.address || '',
-				max_products: selectedWarehouse.max_products || 0,
+				name: selectedWarehouse.name,
+				address: selectedWarehouse.address,
+				max_products: selectedWarehouse.max_products,
 			})
 		}
 	}, [selectedWarehouse])
 
+	//-----ВЫБОР СКЛАДА-----
 	const handleSelectWarehouse = async (warehouse: Warehouse) => {
-		if(selectedWarehouse?.id == warehouse.id){
+		if (selectedWarehouse?.id === warehouse.id) {
 			setSelectedWarehouse(null)
 			setRobots([])
 			setProducts([])
@@ -150,44 +128,30 @@ function ListPage() {
 		}
 
 		setSelectedWarehouse(warehouse)
-		setLoading(true)
-		setError(null)
-
-		setRobots([]) //очистка старых полей при выборе склада
+		setRobots([])
 		setProducts([])
 
 		try {
-			const warehouseById = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${warehouse.id}`
-			)
-			console.log('Данные склада:', warehouseById.data)
-			
-			const robotsById = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${warehouse.id}`
-			)
-			console.log('Роботы на складе:',robotsById.data)
-			setRobots(robotsById.data)
+			const [robotsRes, productsRes] = await Promise.all([
+				axios.get(
+					`https://rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${warehouse.id}`
+				),
+				axios.get(
+					`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${warehouse.id}`,
+					{ headers: { Authorization: `Bearer ${token}` } }
+				),
+			])
 
-			const productsById = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${warehouse.id}`,
-				{
-					headers: {
-						Authorization: `Bearer ${token}`,
-					},
-				}
-			)
-			console.log('Товары на складе:', productsById.data)
-			setProducts(productsById.data)
-
+			setRobots(robotsRes.data)
+			setProducts(productsRes.data)
 		} catch (err) {
-			console.log('Ошибка загрузки подробностей склада:', err)
-		}
-		finally{
-			setLoading(false)
+			console.error('Ошибка при загрузке данных склада:', err)
+			toast.error('Не удалось получить данные склада')
 		}
 	}
 
-	const handleAddRobot = async() => {
+	//-----ДОБАВЛЕНИЕ РОБОТА-----
+	const handleAddRobot = async () => {
 		if (!selectedWarehouse)
 			return alert('Выберите склад для добавления робота.')
 		try {
@@ -214,13 +178,13 @@ function ListPage() {
 			alert('Не удалось добавить робота')
 		}
 	}
-
+	//-----РЕДАКТИРОВАНИЕ СКЛАДА-----
 	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const { name, value } = e.target
 		setEditedWarehouse(prev => ({ ...prev, [name]: value }))
 	}
 
-	const handleSave = async (field: 'name' | 'address') => {
+	const handleSave = async (field: 'name' | 'address' | 'max_products') => {
 		if (!selectedWarehouse) return
 
 		try {
@@ -229,23 +193,25 @@ function ListPage() {
 				[field]: editedWarehouse[field],
 			}
 
-			const response = await axios.put(
+			const response = await axios.patch(
 				`https://rtk-smart-warehouse.ru/api/v1/warehouse/${selectedWarehouse.id}`,
 				updatedData,
 				{ headers: { 'Content-Type': 'application/json' } }
 			)
 
+			updateWarehouse(response.data)
 			console.log('Обновлено:', response.data)
-			alert('Данные склада успешно обновлены!')
+			toast.success('Данные склада успешно обновлены!')
 
-			// обновляем данные в состоянии
-			setSelectedWarehouse(response.data)
+			// Обновляем выбранный склад
+			/* setSelectedWarehouse(response.data) */
 		} catch (error) {
 			console.error('Ошибка при обновлении склада:', error)
-			alert('Не удалось сохранить изменения')
+			toast.error('Не удалось сохранить изменения')
 		}
 	}
 
+	//-----ДОБАВЛЕНИЕ ТОВАРА-----
 	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const { name, value } = e.target
 		setFormData(prev => ({ ...prev, [name]: value }))
@@ -255,17 +221,17 @@ function ListPage() {
 	}
 
 	const handleAddProduct = async (e: React.FormEvent) => {
-	  e.preventDefault()
+		e.preventDefault()
 
-	  if (!selectedWarehouse) {
-	    alert('Сначала выберите склад')
-	    return
-	  }
-
-	  setLoading(true)
-	  try {
-			const [rowPos, shelfPos] = formData.current_position.split(',').map(s => s.trim())	
-	    const payload = {
+		if (!selectedWarehouse) {
+			alert('Сначала выберите склад')
+			return
+		}
+		try {
+			const [rowPos, shelfPos] = formData.current_position
+				.split(',')
+				.map(s => s.trim())
+			const payload = {
 				name: formData.name,
 				article: formData.article,
 				category: formData.category,
@@ -275,7 +241,7 @@ function ListPage() {
 				warehouse_id: selectedWarehouse.id,
 			}
 
-	    const response = await axios.post(
+			const response = await axios.post(
 				'https://rtk-smart-warehouse.ru/api/v1/products',
 				payload,
 				{
@@ -286,10 +252,10 @@ function ListPage() {
 				}
 			)
 
-	    console.log('Товар добавлен:', response.data)
-	    alert('Товар успешно добавлен!')
+			console.log('Товар добавлен:', response.data)
+			toast.success('Товар успешно добавлен!')
 
-	    //обновляем список товаров текущего склада
+			//обновляем список товаров текущего склада
 			const updatedProducts = await axios.get(
 				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`,
 				{
@@ -299,10 +265,10 @@ function ListPage() {
 					},
 				}
 			)
-	    setProducts(updatedProducts.data)
+			setProducts(updatedProducts.data)
 
-	    //очистка формы
-	    setFormData({
+			//очистка формы
+			setFormData({
 				name: '',
 				article: '',
 				category: '',
@@ -311,40 +277,46 @@ function ListPage() {
 				current_shelf: '',
 				current_position: '',
 			})
-	  } catch (error) {
-	    console.error('Ошибка при добавлении товара:', error)
-	    alert('Не удалось добавить товар')
-	  } finally {
-	    setLoading(false)
-	  }
+		} catch (error) {
+			console.error('Ошибка при добавлении товара:', error)
+			toast.error('Не удалось добавить товар')
+		} finally {
+			/* setLoading(false) */
+		}
 	}
 
+	//-----РЕДАКТИРОВАНИЕ ТОВАРА-----
 	const handleProductEditChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const { name, value } = e.target
-		setEditedProduct(prev => (prev ? { ...prev, [name]: value } : prev))
+		setEditedProduct(prev => {
+			if (!prev) return prev
+			// если редактируется позиция
+			if (name === 'current_position') {
+				const [row, shelf] = value.split(',').map(s => s.trim())
+				return { ...prev, current_row: Number(row), current_shelf: shelf }
+			}
+			return { ...prev, [name]: value }
+		})
 	}
 
 	const handleUpdateProduct = async (e: React.FormEvent) => {
 		e.preventDefault()
 		if (!selectedWarehouse || !editedProduct) return
 
-		setLoading(true)
+		/* setLoading(true) */
 		try {
-			const [rowPos, shelfPos] =
-				editedProduct.current_position?.split(',').map(s => s.trim()) || []
-
 			const payload = {
 				name: editedProduct.name,
 				article: editedProduct.article,
 				category: editedProduct.category,
 				stock: Number(editedProduct.stock),
-				current_row: Number(rowPos),
-				current_shelf: shelfPos,
+				current_row: editedProduct.current_row,
+				current_shelf: editedProduct.current_shelf,
 				warehouse_id: selectedWarehouse.id,
 			}
 
-			await axios.put(
-				`https://rtk-smart-warehouse.ru/api/v1/products/{editedProduct.id}`,
+			await axios.patch(
+				`https://rtk-smart-warehouse.ru/api/v1/products/${editedProduct.id}`,
 				payload,
 				{ headers: { 'Content-Type': 'application/json' } }
 			)
@@ -360,13 +332,13 @@ function ListPage() {
 					},
 				}
 			)
-			
+
 			setProducts(updatedProducts.data)
 		} catch (error) {
 			console.error('Ошибка при обновлении товара:', error)
 			toast.error('Не удалось обновить товар')
 		} finally {
-			setLoading(false)
+			/* setLoading(false) */
 		}
 	}
 
@@ -509,7 +481,7 @@ function ListPage() {
 
 									<div>
 										<Label
-											htmlFor='name'
+											htmlFor='max_products'
 											className='text-[20px] font-medium text-black'
 										>
 											Вместимость
@@ -517,8 +489,8 @@ function ListPage() {
 										<div className='flex w-full items-center gap-2'>
 											<Input
 												type='text'
-												id='name'
-												name='name'
+												id='max_products'
+												name='max_products'
 												className='main-input'
 												value={editedWarehouse.max_products}
 												onChange={handleInputChange}
@@ -526,7 +498,7 @@ function ListPage() {
 											<Button
 												type='submit'
 												className='warehouse-save-changes-button'
-												onClick={() => handleSave('name')}
+												onClick={() => handleSave('max_products')}
 												disabled={
 													editedWarehouse.max_products ==
 													selectedWarehouse.max_products
@@ -549,6 +521,7 @@ function ListPage() {
 												aria-label='Add Robot'
 												className='small-add-button'
 												onClick={handleAddRobot}
+												disabled={denyAdminAccess}
 											>
 												<AddSmall
 													style={{ width: '22px', height: '22px' }}
@@ -588,6 +561,7 @@ function ListPage() {
 														size='icon'
 														aria-label='Add Product'
 														className='small-add-button'
+														disabled={denyAdminAccess}
 													>
 														<AddSmall
 															style={{ width: '22px', height: '22px' }}
@@ -722,7 +696,7 @@ function ListPage() {
 														onClick={() => setEditedProduct(p)}
 													>
 														<Button
-															aria-label='Add Product'
+															aria-label='Добавить товар'
 															className='product-button'
 														>
 															<div key={p.name} className='product-button-elem'>

@@ -56,13 +56,14 @@ input::placeholder {
 }
 
 .small-add-button{
-  @apply w-[22px] h-[22px] border border-[#CCCCCC] hover:border-[#7700FF] rounded-[6px] cursor-pointer 
-  flex items-center justify-center transition-all duration-200 hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
+  @apply flex items-center justify-center transition-all duration-200 
+  w-[22px] h-[22px] border border-[#CCCCCC] rounded-[6px]
+  enabled:hover:border-[#7700FF] 
+  enabled:hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
 }
 
 .product-button{
-  @apply shadow-none
-  cursor-pointer w-full h-[52px] p-0 m-0 rounded-[10px]
+  @apply shadow-none w-full h-[52px] p-0 m-0 rounded-[10px]
 }
 
 .product-button-elem{
@@ -81,18 +82,18 @@ input::placeholder {
   flex items-center justify-between 
   shadow-none
   transition-all duration-200 ease-in-out
-  hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
-  hover:border-[#7700FF];
+  enabled:hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
+  enabled:hover:border-[#7700FF];
 }
 
 .warehouse-save-changes-button{
-  @apply h-[52px] cursor-pointer 
+  @apply h-[52px]
   border-transparent border-[2px] rounded-[10px] text-[20px] text-[#7700FF]
   flex items-center justify-between bg-[#F2F3F4]
   shadow-none
   transition-all duration-200 ease-in-out
-  hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
-  hover:border-[#7700FF];
+  enabled:hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
+  enabled:hover:border-[#7700FF];
 }
 
 .dialog-input-placeholder-text{
@@ -105,4 +106,14 @@ input::placeholder {
 
 .main-input{
   @apply h-[52px] rounded-[10px] text-[20px] font-medium
+}
+
+.select-warehouse{
+  @apply w-auto h-[38px] cursor-pointer 
+  border-[#CCCCCC] border-[1px] rounded-[10px] text-[20px] text-[#7700FF]
+  flex items-center justify-between 
+  bg-white shadow min-w-[220px]
+  transition-all duration-200 ease-in-out
+  enabled:hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
+  enabled:hover:border-[#7700FF];
 }

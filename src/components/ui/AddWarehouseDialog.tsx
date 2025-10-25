@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
+import { useUserStore } from '../../store/useUserStore.tsx'
 
 export function AddWarehouseDialog(){
   const [formData, setFormData] = useState({
@@ -25,8 +26,10 @@ export function AddWarehouseDialog(){
 		max_products: '',
 	})
   
+	const { user } = useUserStore()
   const [loading, setLoading] = useState(false)
-  
+  let denyAdminAccess = !(user?.role === 'operator')
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const{name,value} = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
@@ -63,7 +66,9 @@ export function AddWarehouseDialog(){
   return (
 		<Dialog>
 			<DialogTrigger asChild>
-				<Button className='add-warehouse-button'>
+				<Button 
+					className='add-warehouse-button' 
+					disabled = {denyAdminAccess}>
 					Добавить склад
 					<AddLarge fill='#7700FF' className='!w-[20px] !h-[20px]' />
 				</Button>
