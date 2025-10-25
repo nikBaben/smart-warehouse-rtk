@@ -102,7 +102,7 @@ function ListPage() {
 
 			try {
 				const response = await axios.get(
-					'https://rtk-smart-warehouse.ru/api/v1/warehouse/all',
+					'https://rtk-smart-warehouse.ru/api/v1/warehouses',
 					{
 						headers: {
 							Authorization: `Bearer ${token}`,
@@ -158,12 +158,12 @@ function ListPage() {
 
 		try {
 			const warehouseById = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/robots/get_robots_by_warehouse_id/${warehouse.id}`
+				`https://rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${warehouse.id}`
 			)
 			console.log('Данные склада:', warehouseById.data)
 			
 			const robotsById = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/robots/get_robots_by_warehouse_id/${warehouse.id}`
+				`https://rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${warehouse.id}`
 			)
 			console.log('Роботы на складе:',robotsById.data)
 			setRobots(robotsById.data)
@@ -196,7 +196,7 @@ function ListPage() {
 			}
 
 			const response = await axios.post(
-				'https://rtk-smart-warehouse.ru/api/v1/robots',
+				'https://rtk-smart-warehouse.ru/api/v1/robot',
 				payload,
 				{ headers: { 'Content-Type': 'application/json' } }
 			)
@@ -206,7 +206,7 @@ function ListPage() {
 
 			// обновляем список роботов для текущего склада
 			const robotsResponse = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/robots/get_robots_by_warehouse_id/${selectedWarehouse.id}`
+				`https://rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${selectedWarehouse.id}`
 			)
 			setRobots(robotsResponse.data)
 		} catch (error) {

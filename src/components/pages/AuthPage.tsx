@@ -8,17 +8,23 @@ import { useNavigate } from 'react-router-dom'
 import { Header } from '@/components/ui/header'
 import { Footer } from '@/components/ui/footer'
 import { toast } from 'sonner'
+import { useUserStore } from '../../store/useUserStore.tsx'
 
-{
-	/*вообще временная фигня, потом на нормальную маску поменяю*/
-}
+/* type User = {
+	id: number,
+	name: string,
+	role: string,
+} */
+
 function AuthPage() {
 	const [email, setEmail] = useState('')
 	const [password, setPassword] = useState('')
 	const [loading, setLoading] = useState(false)
 
-	const navigate = useNavigate()
+	/* const [user, setUser] = useState<User[]>([]) */
 
+	const navigate = useNavigate()
+	const setUser = useUserStore(state => state.setUser)
 	const handleLogin = async () => {
 		setLoading(true)
 
@@ -32,11 +38,27 @@ function AuthPage() {
 				}
 			)
 			localStorage.setItem('token', response.data.token)
+			const userData = response.data.user
+			const [first_name, last_name = ''] = userData.name.split(' ')
+
+			setUser({
+				id: userData.id,
+				first_name,
+				last_name,
+				role: userData.role,
+				email: userData.user
+			})
+			console.log(userData)
 			navigate('/')
 		}
 		catch(error){
 			const err = error as AxiosError<{ error?: string }>
+			console.error('Ошибка при логине:', err)
+			console.log('➡️ err.response:', err.response)
+			console.log('➡️ err.request:', err.request)
+			console.log('➡️ err.message:', err.message)
 			const message = err.response?.data?.error || 'Неизвестная ошибка'
+			
 			if (err.response){
 				toast.error('Ошибка при входе в аккаунт', {
       	  description: message,

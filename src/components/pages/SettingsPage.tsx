@@ -1,5 +1,8 @@
 import axios from "axios";
+import { useEffect } from "react";
 import { useState} from "react";
+import { toast } from 'sonner'
+import { useUserStore } from '../../store/useUserStore.tsx'
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import ChevronDown from '@atomaro/icons/24/navigation/ChevronDown';
@@ -19,11 +22,90 @@ import {
 } from '@/components/ui/select'
 
 function SettingsPage(){
-  const [showNotifications, setShowNotifications] = useState(false);
-	const [email, setEmail] = useState('')
-	const [password, setPassword] = useState('')
+	const token = localStorage.getItem('token')
+  
+	const [showNotifications, setShowNotifications] = useState(false);
+	/* const [email, setEmail] = useState('') */
 	const [loading, setLoading] = useState(false)
+	const [error, setError] = useState<string | null>(null)
 	
+	const { user, updateUser } = useUserStore()
+
+	type EditableUser = {
+		first_name: string
+		last_name: string
+		role: string
+	}
+
+	const [form, setForm] = useState({
+		first_name: '',
+		last_name: '',
+		role: '',
+	})
+
+	useEffect(() => {
+		if (user) {
+			setForm({
+				first_name: user.first_name || '',
+				last_name: user.last_name || '',
+				role: user.role || '',
+			})
+		}
+	}, [user])
+
+	const handleChange = (key: keyof EditableUser, value: string) => {
+		setForm(prev => ({ ...prev, [key]: value }))
+	}
+
+  const handleSave = async () => {
+		if (!user) return
+		setLoading(true)
+
+		try {
+			const full_name = `${form.first_name} ${form.last_name}`.trim()
+
+			const payload = {
+				name: full_name,
+				role: form.role,
+			}
+
+			const response = await axios.put(
+				`https://rtk-smart-warehouse.ru/api/v1/user/${user.id}`,payload,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						'Content-Type': 'application/json',
+					},
+				}
+			)
+
+			const updated = response.data
+			const [updatedFirstName, updatedLastName = ''] = updated.name.split(' ')
+
+			updateUser({
+				first_name: updatedFirstName,
+				last_name: updatedLastName,
+				role: updated.role,
+			})
+
+			toast.success('Изменения сохранены!')
+		} catch (error) {
+			console.error('Ошибка при сохранении:', error)
+			toast.error('Не удалось сохранить изменения')
+		} finally {
+			setLoading(false)
+		}
+	}
+	
+	const handleReset = async () =>{
+		setForm({
+			first_name: user?.first_name || '',
+			last_name: user?.last_name || '',
+			role: user?.role || '',
+		})
+	}
+
+
   return (
 		<div className='flex bg-[#F4F4F5] min-h-screen'>
 			<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
@@ -41,16 +123,16 @@ function SettingsPage(){
 									</Avatar>
 									<div className='flex flex-col text-black'>
 										<span className='text-[18px] font-medium'>
-											Владимир Смолин
+											{user?.first_name} {user?.last_name}
 										</span>
 										<span className='text-[12px] font-light'>
 											логин: vvsmolin@gmail.com
 										</span>
 									</div>
 								</div>
-								<span className='flex items-center'> работник склада</span>
+								<span className='flex items-center'>{user?.role === 'operator'? 'оператор склада': 'пользователь'}</span>
 							</div>
-							<div className='bg-white rounded-[15px] p-[10px] h-[650px] flex flex-col'>
+							<div className='bg-white rounded-[15px] p-[10px] h-full flex flex-col'>
 								<h2 className='font-medium text-[24px] mb-[15px]'>
 									Профиль и настройки
 								</h2>
@@ -59,63 +141,49 @@ function SettingsPage(){
 										<Label className='section-title'>Имя</Label>
 										<Input
 											className='main-input !text-[16px]'
-											id='name'
-											name='name'
-											value='Владимир'
+											id='first_name'
+											name='first_name'
+											value={form.first_name || ''}
+											onChange={e => handleChange('first_name', e.target.value)}
 										></Input>
 									</div>
 									<div className='flex flex-col'>
 										<Label className='section-title'>Фамилия</Label>
 										<Input
 											className='main-input !text-[16px]'
-											id='surname'
-											name='surname'
-											value='Смолин'
+											id='last_name'
+											name='last_name'
+											value={form.last_name}
+											onChange={e => handleChange('last_name', e.target.value)}
 										></Input>
 									</div>
 									<div className='flex flex-col'>
 										<Label className='section-title'>Логин</Label>
 										<Label className='input-description'>
-											Укажите свою почту или номер телефона, чтобы мы могли
-											Вас идентифицировать
+											Укажите свою почту или номер телефона, чтобы мы могли Вас
+											идентифицировать
 										</Label>
 										<Input
 											className='main-input !text-[16px]'
 											id='login'
 											name='login'
-											placeholder='+79634791447'
-											value='vvsmolin@gmail.com'
-										/>
-									</div>
-									<div className='flex flex-col'>
-										<Label className='section-title'>
-											Почта для отправки отчетов
-										</Label>
-										<Label className='input-description'>
-											Сюда мы будем отправлять Вам отчеты о проверках
-										</Label>
-										<Input
-											className='main-input !text-[16px]'
-											id='email'
-											name='email'
 											placeholder='voenmeh@gmail.com'
-										></Input>
+											value={user?.email}
+										/>
 									</div>
 									<div className='relative'>
 										<span className='section-title'>Роль</span>
-										<Select>
+										<Select
+											value={form.role}
+											onValueChange={value => handleChange('role', value)}
+										>
 											<SelectTrigger className='w-full !h-[52px]'>
-												<SelectValue placeholder='Выберите категорию' />
+												<SelectValue defaultValue={form.role}/>
 											</SelectTrigger>
 											<SelectContent>
-												<SelectItem value='Смартфоны'>
+												<SelectItem value='operator'>Оператор</SelectItem>
+												<SelectItem value='user'>
 													Пользователь склада
-												</SelectItem>
-												<SelectItem value='Бытовая техника'>
-													Администратор
-												</SelectItem>
-												<SelectItem value='Комплектующие'>
-													Бро ты умрешь и т.д.
 												</SelectItem>
 											</SelectContent>
 										</Select>
@@ -138,14 +206,20 @@ function SettingsPage(){
 											></SignOut>
 											Выйти
 										</Button>
-										<Button className='flex-1 h-[40px] bg-white border-[2px] border-[#5A606D] text-[#5A606D] text-[18px] rounded-[10px]'>
+										<Button
+											className='flex-1 h-[40px] bg-white border-[2px] border-[#5A606D] text-[#5A606D] text-[18px] rounded-[10px]'
+											onClick={handleReset}
+										>
 											<CloseLarge
 												fill='#5A606D'
 												className='h-[14px] w-auto'
 											></CloseLarge>
 											Отменить
 										</Button>
-										<Button className='flex-1 h-[40px] bg-white border-[2px] border-[#7700FF] text-[#7700FF] text-[18px] rounded-[10px]'>
+										<Button
+											onClick={handleSave}
+											className='flex-1 h-[40px] bg-white border-[2px] border-[#7700FF] text-[#7700FF] text-[18px] rounded-[10px]'
+										>
 											<CheckLarge
 												fill='#7700FF'
 												className='h-[14px] w-auto'
@@ -157,7 +231,7 @@ function SettingsPage(){
 										<img
 											src='/src/assets/images/warehouse-img 1.svg'
 											alt='Warehouse'
-											className='w-[300px] h-[200px]'
+											className='w-[400px] h-[266px]'
 										/>
 									</div>
 								</div>
