@@ -41,6 +41,6 @@ async def start_robot_mover():
     asyncio.create_task(continuous_inventory_critical_streamer(interval=2.0)),
     asyncio.create_task(continuous_inventory_status_avg_streamer(interval=2.0)),
     asyncio.create_task(continuous_robot_status_count_streamer(interval=2.0)),  # ⬅️ новый
-    asyncio.create_task(continuous_robot_activity_history_streamer(interval=30.0)),
+    asyncio.create_task(continuous_robot_activity_history_streamer(interval=600)),
     print("🤖 Robot watcher started as background async task.")
 
