@@ -82,3 +82,5 @@ class RobotService:
         if not robots:
             raise ValueError(f"Роботы на скалде id '{warehouse_id}' не найдены.")
         return robots
+    
+    
