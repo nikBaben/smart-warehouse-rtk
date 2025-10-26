@@ -15,3 +15,9 @@ class User(Base):
     
     # Связь с Keycloak
     keycloak_user = relationship("KeycloakUser", back_populates="user", uselist=False)
+    alarm_user = relationship(
+        "Alarm",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        # uselist=True по умолчанию (у одного User — много Alarm)
+    )
