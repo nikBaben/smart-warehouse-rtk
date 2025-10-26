@@ -35,12 +35,12 @@ app.include_router(ws_router.router, prefix="/api")
 async def start_robot_mover():
     asyncio.create_task(run_robot_watcher(interval=5.0, max_workers=8))
     asyncio.create_task(robot_events_broadcaster())
-    asyncio.create_task(continuous_product_snapshot_streamer(interval=2.0))
-    asyncio.create_task(continuous_robot_avg_streamer(interval=2.0))
-    asyncio.create_task(continuous_inventory_scans_streamer(interval=2.0, hours=24))
-    asyncio.create_task(continuous_inventory_critical_streamer(interval=2.0))
-    asyncio.create_task(continuous_inventory_status_avg_streamer(interval=2.0))
-    asyncio.create_task(continuous_robot_status_count_streamer(interval=2.0)) # ⬅️ новый
+    asyncio.create_task(continuous_product_snapshot_streamer(interval=10))
+    asyncio.create_task(continuous_robot_avg_streamer(interval=60))
+    asyncio.create_task(continuous_inventory_scans_streamer(interval=60, hours=24))
+    asyncio.create_task(continuous_inventory_critical_streamer(interval=60))
+    asyncio.create_task(continuous_inventory_status_avg_streamer(interval=60))
+    asyncio.create_task(continuous_robot_status_count_streamer(interval=60)) # ⬅️ новый
     asyncio.create_task(continuous_robot_activity_history_streamer(interval=600))
     print("🤖 Robot watcher started as background async task.")
 

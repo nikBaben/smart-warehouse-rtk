@@ -3,7 +3,7 @@ from typing import Optional, Literal
 from pydantic import BaseModel, Field,conint
 
 
-RobotStatus = Literal["idle", "busy", "charging", "error"] 
+RobotStatus = Literal["idle", "busy", "charging", "error","scanning"] 
 
 
 class RobotBase(BaseModel):
