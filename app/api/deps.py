@@ -13,15 +13,17 @@ from app.repositories.warehouse_repo import WarehouseRepository
 from app.repositories.user_repo import UserRepository
 from app.repositories.kkid_user_repo import KkidUserRepository
 from app.repositories.inventory_history_repo import InventoryHistoryRepository
+from app.repositories.alarm_repo import AlarmRepository
 
 # Services
 from app.service.robot_service import RobotService
 from app.service.product_service import ProductService
-from app.service.warehouse_service import WarehouseService  # ← исправлена опечатка!
+from app.service.warehouse_service import WarehouseService 
 from app.service.auth_service import AuthService
 from app.service.keycloak_service import KeycloakService
 from app.service.user_service import UserService
 from app.service.inventory_history_service import InventoryHistoryService
+from app.service.alarm_service import AlarmService
 
 # DB
 from app.db.session import get_session
@@ -50,6 +52,8 @@ def get_user_repo(db: AsyncSession = Depends(get_session)) -> UserRepository:
 def get_kkid_user_repo(db: AsyncSession = Depends(get_session)) -> KkidUserRepository:
     return KkidUserRepository(db)
 
+def get_alarm_repo(db: AsyncSession = Depends(get_session)) -> AlarmRepository:
+    return AlarmRepository(db)
 
 # --- Services ---
 def get_robot_service(repo: RobotRepository = Depends(get_robot_repo)) -> RobotService:
@@ -77,6 +81,9 @@ def get_inventory_history_repo(db: AsyncSession = Depends(get_session)) -> Inven
 
 def get_inventory_history_service(repo: InventoryHistoryRepository = Depends(get_inventory_history_repo)) -> InventoryHistoryService:
     return InventoryHistoryService(repo)
+
+def  get_alarm_service(repo: AlarmRepository = Depends(get_alarm_repo)) -> AlarmService:
+    return AlarmService(repo)
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),

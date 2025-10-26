@@ -8,7 +8,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.schemas.robot import RobotCreate
 from app.repositories.robot_repo import RobotRepository
+from app.service.alarm_service import AlarmService
 from app.models.robot import Robot
+
+
 
 class RobotService:
     def __init__(self, repo: RobotRepository):
@@ -26,7 +29,7 @@ class RobotService:
         rnd = random.randint(0, 1295)
         return base36(ts % 1296) + base36(rnd)
 
-    async def create_robot(self, data: RobotCreate) -> Robot:
+    async def create_robot(self, data: RobotCreate, user_id: int) -> Robot:
 
         robot_id = await self.create_id()
 
@@ -44,7 +47,15 @@ class RobotService:
                 warehouse_id=data.warehouse_id, 
                 check_warehouse_exists=True
             )
+            await AlarmService.create_alarm(
+                user_id,"Робот создан"
+            )
             return robot
+        
+        
+
+    
+
 
         except IntegrityError as e:
             code = getattr(getattr(e, "orig", None), "pgcode", None) or getattr(getattr(e, "orig", None), "sqlstate", None)

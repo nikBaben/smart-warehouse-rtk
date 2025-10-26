@@ -35,7 +35,7 @@ class UserRepository:
             name=user_create.name,
             role=user_create.role
         )
-        self.session.add(user)  # ← исправлено с user_repo.add на self.session.add
+        self.session.add(user) 
         await self.session.commit()
         await self.session.refresh(user)
         return user

@@ -8,7 +8,7 @@ RobotStatus = Literal["idle", "busy", "charging", "error"]
 
 class RobotBase(BaseModel):
     status: RobotStatus = "idle"
-    battery_level: conint(ge=0) = Field(100, description="Всего товаров")
+    battery_level: conint(ge=0) = Field(100, description="Всего товаров") # type: ignore
     current_zone: str = Field(..., min_length=1)
     current_row: int = 0
     current_shelf: int = 0
