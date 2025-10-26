@@ -10,7 +10,7 @@ router = APIRouter(prefix="/products", tags=["products"])#dependencies=[Depends(
     "",
     response_model=ProductRead,
     status_code=status.HTTP_201_CREATED,
-    summary="Создать продукт",
+    summary="Создать товар",
 )
 async def create_product(
     payload: ProductCreate,
@@ -21,7 +21,8 @@ async def create_product(
 
 @router.patch(
         "/{product_id}", 
-        response_model=ProductRead
+        response_model=ProductRead,
+        summary="Редактировать товар",
 )
 async def patch_product(
     product_id: str,
@@ -31,10 +32,14 @@ async def patch_product(
     return await service.edit_product(product_id, payload)
 
 
-@router.delete("/{product_id}")
+@router.delete(
+        "/{product_id}", 
+        summary="Удалить товар",
+)
 async def delete_product(
     product_id: str,
     service: ProductService = Depends(get_product_service),
+    
 ):
     return await service.delete_product(product_id)
 
@@ -42,7 +47,7 @@ async def delete_product(
     "/get_products_by_warehouse_id/{warehouse_id}",
     response_model=list[ProductRead],
     status_code=status.HTTP_200_OK,
-    summary="Список товаров, привзяанных к складу",
+    summary="Список товаров, привязанных к складу",
 )
 async def get_products_by_warehouse_id(
     warehouse_id: str,

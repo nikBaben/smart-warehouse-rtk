@@ -24,7 +24,7 @@ async def create_warehouse(
         "/{warehouse_id}",
         response_model=WarehouseResponse,
         status_code=status.HTTP_200_OK,
-        summary="Получить склад по ID"
+        summary="Склад по id"
 )
 async def get_warehouse(
     warehouse_id: str,
@@ -40,7 +40,9 @@ async def get_warehouse(
 
 @router.patch(
         "/{warehouse_id}", 
-        response_model=WarehouseResponse)
+        response_model=WarehouseResponse,
+        summary="Редактировать склад"
+)
 async def patch_warehouse(
     warehouse_id: str,
     payload: WarehouseUpdate,
@@ -48,7 +50,10 @@ async def patch_warehouse(
 ):
     return await service.edit_warehouse(warehouse_id, payload)
 
-@router.delete("/{warehouse_id}")
+@router.delete(
+        "/{warehouse_id}",
+        summary="Удалить склад"
+)
 async def delete_warehouse(
     warehouse_id: str,
     service: WarehouseService = Depends(get_warehouse_service),

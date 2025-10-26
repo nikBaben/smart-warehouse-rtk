@@ -33,7 +33,7 @@ async def delete_warehouse(
     "/get_robots_by_warehouse_id/{warehouse_id}",
     response_model=list[RobotRead],
     status_code=status.HTTP_200_OK,
-    summary="Список роботов, привзяанных к складу",
+    summary="Список роботов, привязанных к складу",
 )
 async def get_robots_by_warehouse_id(
     warehouse_id: str,
