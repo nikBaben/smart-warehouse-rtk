@@ -114,14 +114,14 @@ async def get_current_user(
 
 async def keycloak_auth_middleware(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    auth_svc: AuthService = Depends(get_auth_service)
+    auth_svc: KeycloakService = Depends(get_keycloak_service)
 ):
     """Middleware для проверки аутентификации — аналог Go middleware"""
     token = credentials.credentials
     logger.info("Middleware token validation")
 
     # Используем validate_token_for_middleware (предполагается, что он есть в AuthService)
-    if not await auth_svc.validate_token_for_middleware(token):
+    if not await auth_svc.validate_token(token):
         logger.error("Middleware token validation failed")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
