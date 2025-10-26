@@ -1,10 +1,3 @@
-"""Simple training wrapper for Prophet-based consumption model.
-
-Usage (example):
-    python -m app.ml.train --product-id <id> --model-path app/ml/models/p_<id>.pkl
-
-This script fetches consumption series via data_access, trains Prophet model and saves it.
-"""
 import argparse
 import asyncio
 import os
