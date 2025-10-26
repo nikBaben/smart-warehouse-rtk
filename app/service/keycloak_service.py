@@ -272,3 +272,26 @@ class KeycloakService:
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Token exchange request failed: {str(e)}"
                 )
+
+    async def get_identity_from_token(self, access_token: str) -> Dict[str, Any]:
+        """
+        Возвращает claims пользователя по access_token.
+        Бросает 401, если токен невалиден/просрочен.
+        """
+        try:
+            is_valid = await self.validate_token(access_token)
+            if not is_valid:
+                raise HTTPException(status_code=401, detail="Invalid or expired access token")
+
+            # userinfo даст sub/email/name и т.п.
+            user_info = await self.get_user_info(access_token)
+            if not user_info or "sub" not in user_info:
+                raise HTTPException(status_code=400, detail="Invalid token payload: no 'sub'")
+
+            return user_info
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"get_identity_from_token error: {e}")
+            raise HTTPException(status_code=500, detail="Failed to parse access token")

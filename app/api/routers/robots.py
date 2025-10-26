@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, status
 from app.schemas.robot import RobotCreate, RobotRead
 from app.service.robot_service import RobotService
-from app.service.user_service import UserService
-from app.api.deps import get_robot_service,get_user_service
+from app.service.auth_service import AuthService
+from app.api.deps import get_robot_service,get_auth_service,get_token
 from app.api.deps import keycloak_auth_middleware,get_current_user
 
 router = APIRouter(prefix="/robot", tags=["robots"],dependencies=[Depends(keycloak_auth_middleware)])
@@ -16,26 +16,14 @@ router = APIRouter(prefix="/robot", tags=["robots"],dependencies=[Depends(keyclo
 async def create_robot(
     payload: RobotCreate,
     service: RobotService = Depends(get_robot_service),
-    user_info: dict = Depends(get_current_user),
-    user_service: UserService = Depends(get_user_service),
+    user_service: AuthService = Depends(get_auth_service),
+    token: str = Depends(get_token)
 ):
-    # 1️⃣ Извлекаем идентификаторы из токена
-    kkid = user_info.get("sub") or user_info.get("sid")
-    email = user_info.get("email")
-
-    # 2️⃣ Получаем/создаём пользователя в БД
-    user = await user_service.get_or_create_user_from_keycloak(
-        kkid=kkid,
-        email=email,
-        user_info=user_info
-    )
-
-    # 3️⃣ ID из твоей таблицы User
-    user_id = user.id
-    print(f"✅ User from DB: {user.email} (id={user_id})")
+    user_info = user_service.get_current_user(token)
+    print(user_info)
 
     # 4️⃣ Создаём робота, связываем с user_id
-    robot = await service.create_robot(payload, owner_id=user_id)
+    robot = await service.create_robot(payload, owner_id=user_info.id)
     return robot
 
 

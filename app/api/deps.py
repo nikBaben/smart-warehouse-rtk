@@ -73,8 +73,8 @@ async def get_auth_service(session: AsyncSession = Depends(get_session)) -> Auth
 def get_user_service(repo: UserRepository = Depends(get_user_repo)) -> UserService:
     return UserService(repo)
 
-def get_keycloak_service(repo: KkidUserRepository = Depends(get_kkid_user_repo)) -> KeycloakService:
-    return KeycloakService(repo)
+def get_keycloak_service() -> KeycloakService:
+    return KeycloakService()
 
 def get_inventory_history_repo(db: AsyncSession = Depends(get_session)) -> InventoryHistoryRepository:
     return InventoryHistoryRepository(db)
@@ -87,7 +87,7 @@ def  get_alarm_service(repo: AlarmRepository = Depends(get_alarm_repo)) -> Alarm
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    auth_svc: AuthService = Depends(get_auth_service)
+    auth_svc: KeycloakService = Depends(get_keycloak_service)
 ):
     """Зависимость для получения текущего пользователя"""
     token = credentials.credentials

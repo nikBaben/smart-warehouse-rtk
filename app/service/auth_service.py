@@ -1,6 +1,6 @@
 import logging
 from fastapi import HTTPException
-from app.schemas.auth import AuthResponse
+from app.schemas.auth import AuthResponse, UserResponse
 from app.service.keycloak_service import KeycloakService
 from app.service.user_service import UserService
 
@@ -75,3 +75,35 @@ class AuthService:
         """Выход из системы"""
         success = await self.keycloak_service.logout(refresh_token)
         return {"success": success, "message": "Logged out successfully"}
+    
+
+    async def get_current_user(self, access_token: str) -> UserResponse:
+        try:
+            user_info = await self.keycloak_service.get_identity_from_token(access_token)
+            kkid = user_info["sub"]
+
+            user = await self.user_service.get_user_by_kkid(kkid)
+            if not user:
+                # Если хотите автосоздание — раскомментируйте этот блок
+                # email = user_info.get("email")
+                # if not email:
+                #     raise HTTPException(status_code=400, detail="Email claim is missing")
+                # user = await self.user_service.get_or_create_user_from_keycloak(
+                #     kkid=kkid,
+                #     email=email,
+                #     user_info=user_info
+                # )
+                raise HTTPException(status_code=404, detail="User not found")
+
+            return UserResponse(
+                id=user.id,
+                name=user.name,
+                role=user.role,
+                email=user.email
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"get_current_user error: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
