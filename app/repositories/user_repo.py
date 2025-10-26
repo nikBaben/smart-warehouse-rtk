@@ -15,11 +15,11 @@ class UserRepository:
         return result.scalar_one_or_none()
 
     async def get_by_kkid(self, kkid: str) -> Optional[User]:
-        from app.models.keycloak_user import KkidUser
+        from app.models.keycloak_user import KeycloakUser
         result = await self.session.execute(
             select(User)
-            .join(KkidUser, User.id == KkidUser.user_id)
-            .where(KkidUser.kkid == kkid)
+            .join(KeycloakUser, User.id == KeycloakUser.user_id)
+            .where(KeycloakUser.kkid == kkid)
         )
         return result.scalar_one_or_none()
 
