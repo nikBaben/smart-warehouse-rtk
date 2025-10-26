@@ -216,12 +216,30 @@ async def _cell_has_products(session: AsyncSession, warehouse_id: str, x: int, y
     )
     return res.scalar_one_or_none() is not None
 
+async def _begin_scanning(robot: Robot, x: int, y_num: int, session: AsyncSession) -> None:
+    robot.status = "scanning"
+    await write_robot_status_event(session, robot.id)
+    until = datetime.now(timezone.utc) + SCAN_DURATION
+    _SCANNING_UNTIL[robot.id] = until
+    _SCANNING_TARGET[robot.id] = (x, y_num)
+    EVENTS.sync_q.put({
+        "type": "robot.scanning_start",
+        "warehouse_id": robot.warehouse_id,
+        "robot_id": robot.id,
+        "x": x,
+        "y": y_num,
+        "shelf": shelf_num_to_str(y_num),
+        "battery_level": robot.battery_level or 0,
+        "status": robot.status,
+        "scanning_until": until.isoformat(),
+    })
+    print(f"📡 Robot {robot.id} scanning START at ({x},{shelf_num_to_str(y_num)})", flush=True)
+
 async def _maybe_finish_scanning(robot: Robot, session: AsyncSession) -> bool:
     if robot.status != "scanning":
         return False
-
     until = _SCANNING_UNTIL.get(robot.id)
-    now = datetime.now(timezone.utc)                     # 👈 фиксируем момент завершения
+    now = datetime.now(timezone.utc)
     if until and now >= until:
         rx, ry = _SCANNING_TARGET.get(robot.id, (robot.current_row, robot.current_shelf))
         shelf_letter = shelf_num_to_str(ry)
@@ -263,8 +281,6 @@ async def _maybe_finish_scanning(robot: Robot, session: AsyncSession) -> bool:
                     min_stock=p.min_stock,
                     optimal_stock=p.optimal_stock,
                     status=status,
-                    # 👇 если в модели есть поле created_at — проставим явно
-                    created_at=now,
                 )
             )
             payload_products.append({
@@ -277,7 +293,8 @@ async def _maybe_finish_scanning(robot: Robot, session: AsyncSession) -> bool:
                 "shelf_num": ry,
                 "stock": current_stock,
                 "status": status,
-                "scanned_at": now.isoformat(),          # 👈 время по каждому товару (опционально)
+                "scanned_at": now.isoformat(),
+
             })
 
         session.add_all(history_rows)
@@ -292,7 +309,6 @@ async def _maybe_finish_scanning(robot: Robot, session: AsyncSession) -> bool:
             "shelf": shelf_letter,
             "status": robot.status,
         })
-
         EVENTS.sync_q.put({
             "type": "product.scan",
             "warehouse_id": robot.warehouse_id,
@@ -301,10 +317,8 @@ async def _maybe_finish_scanning(robot: Robot, session: AsyncSession) -> bool:
             "y": ry,
             "shelf": shelf_letter,
             "products": payload_products,
-            "scanned_at": now.isoformat(),              # 👈 общее время завершения сканирования
         })
-
-        print(f"✅ Robot {robot.id} SCAN DONE @ {now.isoformat()} — записано {len(products)} товаров", flush=True)
+        print(f"✅ Robot {robot.id} SCAN DONE — записано {len(products)} товаров", flush=True)
         return True
     return False
 

@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from app.schemas.robot import RobotCreate
+from app.schemas.alarm import AlarmCreate
 from app.repositories.robot_repo import RobotRepository
 from app.service.alarm_service import AlarmService
 from app.models.robot import Robot
@@ -49,7 +50,7 @@ class RobotService:
                 check_warehouse_exists=True
             )
             await self.alarm_service.create_alarm(
-                user_id,"Робот создан"
+                AlarmCreate(user_id=user_id, message="Робот создан")
             )
             return robot
         

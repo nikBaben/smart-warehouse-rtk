@@ -23,7 +23,7 @@ async def create_robot(
 ):
     user_info = await user_service.get_current_user(token)
     # 4️⃣ Создаём робота, связываем с user_id
-    robot = await service.create_robot(payload, owner_id=user_info.id)
+    robot = await service.create_robot(payload, user_id=user_info.id)
     return robot
 
 
