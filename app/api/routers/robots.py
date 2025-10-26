@@ -4,9 +4,11 @@ from app.service.robot_service import RobotService
 from app.service.auth_service import AuthService
 from app.api.deps import get_robot_service,get_auth_service,get_token
 from app.api.deps import keycloak_auth_middleware,get_current_user
+import logging
 
 router = APIRouter(prefix="/robot", tags=["robots"],dependencies=[Depends(keycloak_auth_middleware)])
 
+logger = logging.getLogger(__name__)
 @router.post(
     "",
     response_model=RobotRead,
@@ -19,11 +21,12 @@ async def create_robot(
     user_service: AuthService = Depends(get_auth_service),
     token: str = Depends(get_token)
 ):
-    user_info = user_service.get_current_user(token)
+    user_info = await user_service.get_current_user(token)
     print(user_info)
+    logger.info(f"✅ User info: {user_info}")
 
     # 4️⃣ Создаём робота, связываем с user_id
-    robot = await service.create_robot(payload, owner_id=user_info.id)
+    robot = await service.create_robot(payload, owner_id=user_info)
     return robot
 
 
