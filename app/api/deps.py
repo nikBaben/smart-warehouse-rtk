@@ -56,8 +56,11 @@ def get_alarm_repo(db: AsyncSession = Depends(get_session)) -> AlarmRepository:
     return AlarmRepository(db)
 
 # --- Services ---
-def get_robot_service(repo: RobotRepository = Depends(get_robot_repo)) -> RobotService:
-    return RobotService(repo)
+def  get_alarm_service(repo: AlarmRepository = Depends(get_alarm_repo)) -> AlarmService:
+    return AlarmService(repo)
+    
+def get_robot_service(repo: RobotRepository = Depends(get_robot_repo), alarm_service: AlarmService = Depends(get_alarm_service)) -> RobotService:
+    return RobotService(repo,alarm_service)
 
 def get_product_service(repo: ProductRepository = Depends(get_product_repo)) -> ProductService:
     return ProductService(repo)
