@@ -14,8 +14,9 @@ from app.models.robot import Robot
 
 
 class RobotService:
-    def __init__(self, repo: RobotRepository):
+    def __init__(self, repo: RobotRepository,user_service:AlarmService):
         self.repo = repo
+        self.user_service = user_service
 
     async def create_id(self) -> str:
         alphabet = string.digits + string.ascii_uppercase  # 0-9 + A-Z
@@ -47,7 +48,7 @@ class RobotService:
                 warehouse_id=data.warehouse_id, 
                 check_warehouse_exists=True
             )
-            await AlarmService.create_alarm(
+            await self.user_service.create_alarm(
                 user_id,"Робот создан"
             )
             return robot
