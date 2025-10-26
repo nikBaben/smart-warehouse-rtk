@@ -73,8 +73,8 @@ async def get_auth_service(session: AsyncSession = Depends(get_session)) -> Auth
 def get_user_service(repo: UserRepository = Depends(get_user_repo)) -> UserService:
     return UserService(repo)
 
-def get_keycloak_service() -> KeycloakService:
-    return KeycloakService()
+def get_keycloak_service(repo: KkidUserRepository = Depends(get_kkid_user_repo)) -> KeycloakService:
+    return KeycloakService(repo)
 
 def get_inventory_history_repo(db: AsyncSession = Depends(get_session)) -> InventoryHistoryRepository:
     return InventoryHistoryRepository(db)
