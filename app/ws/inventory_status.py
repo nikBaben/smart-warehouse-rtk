@@ -37,13 +37,16 @@ async def publish_status_avg_snapshot(session: AsyncSession, warehouse_id: str) 
 
     rows = (await session.execute(stmt)).all()
     avgs: Dict[str, float] = {status: round(float(avg or 0.0), 2) for status, avg in rows}
+    if avgs:
+        status, max_avg = max(avgs.items(), key=lambda item: item[1])
+    else:
+        status, max_avg = None, 0.0
 
     EVENTS.sync_q.put({
         "type": "inventory.status_avg",
         "warehouse_id": warehouse_id,
-        "avgs": avgs,                  # пример: {"critical": 3.5, "ok": 42.0}
-        "metric": "avg(stock)",        # чтобы на клиенте было понятно, что усредняли
-        "ts": _now_iso(),
+        "status": status,                  
+        "max_avg": max_avg,       
     })
 
 

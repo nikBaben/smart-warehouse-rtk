@@ -36,7 +36,6 @@ async def publish_critical_unique_articles_snapshot(
         "type": "inventory.critical_unique",
         "warehouse_id": warehouse_id,
         "unique_articles": int(count or 0),
-        "ts": _now_iso(),
     })
 
 

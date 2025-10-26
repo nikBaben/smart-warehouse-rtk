@@ -26,7 +26,10 @@ async def publish_robot_status_count_snapshot(
     Также отдаёт разбивку по каждому статусу (на всякий случай).
     """
     statuses = ["idle", "scan"]
-
+    total_all_val = await session.scalar(
+        select(func.count(Robot.id)).where(Robot.warehouse_id == warehouse_id)
+    )
+    total_robots = int(total_all_val or 0)
     # сгруппированный подсчёт по каждому статусу
     stmt = (
         select(
@@ -42,12 +45,10 @@ async def publish_robot_status_count_snapshot(
     total = sum(per_status.values())
 
     EVENTS.sync_q.put({
-        "type": "robot.status_count",
+        "type": "robot.active_robots",
         "warehouse_id": warehouse_id,
-        "statuses": statuses,         # ['idle','scan']
-        "total": total,               # суммарно idle+scan
-        "per_status": per_status,     # например {'idle': 3, 'scan': 2}
-        "ts": _now_iso(),
+        "active_robots": total,        
+        "robots": total_robots,               
     })
 
 

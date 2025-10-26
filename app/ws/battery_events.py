@@ -25,13 +25,11 @@ async def publish_robot_avg_snapshot(session: AsyncSession, warehouse_id: str) -
             func.count(Robot.id),
         ).where(Robot.warehouse_id == warehouse_id)
     )
-    avg, cnt = row.one_or_none() or (None, 0)
+    avg = row.one_or_none() or (None, 0)
     EVENTS.sync_q.put({
         "type": "robot.avg_battery",
         "warehouse_id": warehouse_id,
         "avg_battery": round(float(avg or 0.0), 2),
-        "robot_count": int(cnt or 0),
-        "ts": _now_iso(),
     })
 
 

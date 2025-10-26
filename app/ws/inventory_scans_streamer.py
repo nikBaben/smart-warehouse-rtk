@@ -42,9 +42,7 @@ async def publish_inventory_scanned_24h_snapshot(
     EVENTS.sync_q.put({
         "type": "inventory.scanned_24h",
         "warehouse_id": warehouse_id,
-        "hours": hours,
         "count": int(count or 0),
-        "ts": _now_utc().isoformat(),
     })
 
 
