@@ -6,7 +6,7 @@ from app.api.deps import get_robot_service,get_auth_service,get_token
 from app.api.deps import keycloak_auth_middleware,get_current_user
 import logging
 
-router = APIRouter(prefix="/robot", tags=["robots"],dependencies=[Depends(keycloak_auth_middleware)])
+router = APIRouter(prefix="/robot", tags=["robots"])
 
 logger = logging.getLogger(__name__)
 @router.post(
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
     response_model=RobotRead,
     status_code=status.HTTP_201_CREATED,
     summary="Создать робота",
+    dependencies=[Depends(keycloak_auth_middleware)]
 )
 async def create_robot(
     payload: RobotCreate,
@@ -22,11 +23,8 @@ async def create_robot(
     token: str = Depends(get_token)
 ):
     user_info = await user_service.get_current_user(token)
-    # 4️⃣ Создаём робота, связываем с user_id
     robot = await service.create_robot(payload, user_id=user_info.id)
     return robot
-
-
 
 @router.delete(
         "/{robot_id}",

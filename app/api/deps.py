@@ -1,10 +1,9 @@
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import logging
 
 # Repositories
 from app.repositories.robot_repo import RobotRepository
@@ -28,15 +27,11 @@ from app.service.alarm_service import AlarmService
 # DB
 from app.db.session import get_session
 
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-import logging
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
-
-# --- Repositories ---
+#Repositories
 def get_robot_repo(db: AsyncSession = Depends(get_session)) -> RobotRepository:
     return RobotRepository(db)
 
@@ -55,7 +50,7 @@ def get_kkid_user_repo(db: AsyncSession = Depends(get_session)) -> KkidUserRepos
 def get_alarm_repo(db: AsyncSession = Depends(get_session)) -> AlarmRepository:
     return AlarmRepository(db)
 
-# --- Services ---
+#Services
 def  get_alarm_service(repo: AlarmRepository = Depends(get_alarm_repo)) -> AlarmService:
     return AlarmService(repo)
     
@@ -113,7 +108,6 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Failed to get user information"
         )
-
 
 async def keycloak_auth_middleware(
     credentials: HTTPAuthorizationCredentials = Depends(security),
