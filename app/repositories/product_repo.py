@@ -1,4 +1,5 @@
 from typing import Optional, List
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func,update
 from sqlalchemy.exc import IntegrityError
@@ -31,6 +32,8 @@ class ProductRepository:
             )
             if not exists:
                 raise ValueError(f"Склад '{warehouse_id}' не найден")
+            
+        await self.check_limit(warehouse_id,stock)
 
         product = Product(
             id=id,
@@ -49,7 +52,7 @@ class ProductRepository:
         self.session.add(product)
         try:
             await self.session.flush()
-            await self._bump_products_count(warehouse_id, +stock)
+            await self.bump_products_count(warehouse_id, +stock)
             await self.session.commit()
         except IntegrityError as e:
             await self.session.rollback()
@@ -87,6 +90,7 @@ class ProductRepository:
             return None
 
         old_wh = product.warehouse_id
+        old_stock = product.stock
         new_wh = old_wh
 
         if warehouse_id is not None and warehouse_id != old_wh:
@@ -99,6 +103,12 @@ class ProductRepository:
             if not exists:
                 raise ValueError(f"Склад '{warehouse_id}' не найден")
             product.warehouse_id = new_wh = warehouse_id
+
+        if stock != old_stock:
+            await self.bump_products_count(old_wh,-product.stock)
+            await self.check_limit(warehouse_id,stock)
+            await self.bump_products_count(old_wh,+stock)
+        
 
         if name is not None:
             product.name = name
@@ -115,11 +125,6 @@ class ProductRepository:
 
         try:
             await self.session.flush()
-            if new_wh != old_wh:
-                if old_wh:
-                    await self._bump_products_count(old_wh, -stock)
-                if new_wh:
-                    await self._bump_products_count(new_wh, +stock)
             await self.session.commit()
         except IntegrityError as e:
             await self.session.rollback()
@@ -156,15 +161,29 @@ class ProductRepository:
         if not product:
             raise ValueError(f"Товар с id '{id}' не найден.")
 
+        await self.bump_products_count(product.warehouse_id,-product.stock)
         await self.session.delete(product)
-
+        
         try:
             await self.session.commit()
         except IntegrityError as e:
             await self.session.rollback()
             raise e
-    
-    async def _bump_products_count(self, warehouse_id: str, delta: int) -> None:
+
+    async def check_limit(self, warehouse_id:str, stock:int):
+        result = await self.session.execute(
+            select(Warehouse.max_products, Warehouse.products_count)
+            .where(Warehouse.id == warehouse_id)
+        )
+        limit, products_count = result.one_or_none() or (None, None)
+        allow = limit - products_count
+        if stock > allow:
+            raise HTTPException(
+            status_code=400,
+            detail=f"Склад '{warehouse_id}' переполнен. Можно добавить только {allow} товаров."
+        )
+        
+    async def bump_products_count(self, warehouse_id: str, delta: int) -> None:
         if not warehouse_id:
             return
         stmt = (

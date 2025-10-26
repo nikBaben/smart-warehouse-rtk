@@ -19,7 +19,10 @@ async def create_robot(
     robot = await service.create_robot(payload)
     return robot
 
-@router.delete("/{robot_id}")
+@router.delete(
+        "/{robot_id}",
+        summary="Удалить робота",
+)
 async def delete_warehouse(
     robot_id: str,
     service: RobotService = Depends(get_robot_service),

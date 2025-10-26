@@ -13,15 +13,10 @@ class ProductService:
 
 
     async def create_product(self, data: ProductCreate) -> Product:
-        product_id = data.id or str(uuid4())
+        product_id = str(uuid4())
 
         if data.warehouse_id is None or data.warehouse_id == "":
             raise HTTPException(status_code=400, detail="warehouse_id is required")
-
-        if data.id:
-            existing = await self.repo.get(product_id)
-            if existing:
-                raise HTTPException(status_code=409, detail="Product with this id already exists")
 
         try:
             product = await self.repo.create(

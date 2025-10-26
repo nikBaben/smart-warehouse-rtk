@@ -6,4 +6,4 @@ router = APIRouter(tags=["WebSocket Docs"])
 @router.get("/ws/docs", include_in_schema=False)
 async def get_asyncapi_spec():
     """Возвращает спецификацию WebSocket API (AsyncAPI)."""
-    return FileResponse("asyncapi.yaml")
+    return FileResponse("docs/asyncapi.yaml")
