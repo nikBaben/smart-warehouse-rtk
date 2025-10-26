@@ -6,7 +6,7 @@ from app.schemas.warehouse import WarehouseCreate, WarehouseUpdate
 from app.repositories.warehouse_repo import WarehouseRepository
 from app.models.warehouse import Warehouse
 
-class WarwehouseService:
+class WarehouseService:
     def __init__(self, repo: WarehouseRepository):
         self.repo = repo
 
