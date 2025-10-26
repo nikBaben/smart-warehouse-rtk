@@ -2,12 +2,17 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 # Repositories
 from app.repositories.robot_repo import RobotRepository
 from app.repositories.product_repo import ProductRepository
 from app.repositories.warehouse_repo import WarehouseRepository
 from app.repositories.user_repo import UserRepository
 from app.repositories.kkid_user_repo import KkidUserRepository
+from app.repositories.inventory_history_repo import InventoryHistoryRepository
 
 # Services
 from app.service.robot_service import RobotService
@@ -16,9 +21,12 @@ from app.service.warehouse_service import WarehouseService  # ← исправл
 from app.service.auth_service import AuthService
 from app.service.keycloak_service import KeycloakService
 from app.service.user_service import UserService
+from app.service.inventory_history_service import InventoryHistoryService
 
 # DB
 from app.db.session import get_session
+
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 import logging
 
@@ -58,8 +66,12 @@ async def get_auth_service(session: AsyncSession = Depends(get_session)) -> Auth
 def get_user_service(repo: UserRepository = Depends(get_user_repo)) -> UserService:
     return UserService(repo)
 
+def get_inventory_history_repo(db: AsyncSession = Depends(get_session)) -> InventoryHistoryRepository:
+    return InventoryHistoryRepository(db)
 
-# --- Auth dependencies ---
+def get_inventory_history_service(repo: InventoryHistoryRepository = Depends(get_inventory_history_repo)) -> InventoryHistoryService:
+    return InventoryHistoryService(repo)
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     auth_svc: AuthService = Depends(get_auth_service)

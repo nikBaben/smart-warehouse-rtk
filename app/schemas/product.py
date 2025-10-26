@@ -30,3 +30,13 @@ class ProductRead(ProductBase):
 
     class Config:
         from_attributes = True  
+
+        
+class ProductEdit(BaseModel):
+    name: Optional[str] = Field(None, min_length=1)
+    article: Optional[str] = Field(None, min_length=1)
+    stock: int
+    category: str = Field(..., min_length=1, max_length=100, description="Категория товара")
+    current_row: int = 0
+    current_shelf: str = "A"
+    warehouse_id: Optional[str] = Field(None, description="ID склада, к которому привязан продукт")

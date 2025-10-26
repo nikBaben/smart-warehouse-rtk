@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, status
-from app.schemas.product import ProductCreate, ProductRead
+from app.schemas.product import ProductCreate, ProductRead,ProductEdit
 from app.service.product_service import ProductService
 from app.api.deps import get_product_service  
 from app.api.deps import keycloak_auth_middleware
@@ -18,6 +18,18 @@ async def create_product(
 ):
     product = await service.create_product(payload)
     return product
+
+@router.patch(
+        "/{product_id}", 
+        response_model=ProductRead
+)
+async def patch_product(
+    product_id: str,
+    payload: ProductEdit,
+    service: ProductService = Depends(get_product_service),
+):
+    return await service.edit_product(product_id, payload)
+
 
 @router.delete("/{product_id}")
 async def delete_product(

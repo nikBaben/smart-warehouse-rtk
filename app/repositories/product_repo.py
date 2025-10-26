@@ -69,14 +69,16 @@ class ProductRepository:
             select(Product).where(Product.id == id)
         )
     
-    async def update_partial(
+    async def edit(
         self,
         id: str,
         *,
         name: Optional[str] = None,
+        article: Optional[str] = None,
+        stock: Optional[int] = None,
         category: Optional[str] = None,
-        min_stock: Optional[int] = None,
-        optimal_stock: Optional[int] = None,
+        current_row: Optional[int],
+        current_shelf: Optional[str],
         warehouse_id: Optional[str] = None,
         check_warehouse_exists: bool = True,
     ) -> Optional[Product]:
@@ -102,18 +104,22 @@ class ProductRepository:
             product.name = name
         if category is not None:
             product.category = category
-        if min_stock is not None:
-            product.min_stock = min_stock
-        if optimal_stock is not None:
-            product.optimal_stock = optimal_stock
+        if stock is not None:
+            product.stock = stock
+        if article is not None:
+            product.article = article
+        if current_row is not None:
+            product.current_row = current_row
+        if current_shelf is not None:
+            product.current_shelf = current_shelf
 
         try:
             await self.session.flush()
             if new_wh != old_wh:
                 if old_wh:
-                    await self._bump_products_count(old_wh, -optimal_stock)
+                    await self._bump_products_count(old_wh, -stock)
                 if new_wh:
-                    await self._bump_products_count(new_wh, +optimal_stock)
+                    await self._bump_products_count(new_wh, +stock)
             await self.session.commit()
         except IntegrityError as e:
             await self.session.rollback()
