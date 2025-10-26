@@ -1,4 +1,4 @@
-rtk-smart-warehouse.ru {
+dev.rtk-smart-warehouse.ru {
     encode zstd gzip
 
     log {
@@ -6,13 +6,15 @@ rtk-smart-warehouse.ru {
         format console
         level INFO
     }
-    
+
+    # WebSocket пути: проксируем по HTTP/1.1 к uvicorn
     reverse_proxy /api/ws/* myapp-api:8000 {
         transport http {
             versions 1.1
         }
     }
 
+    # Остальное HTTP — обычный прокси
     reverse_proxy myapp-api:8000
 
     header {

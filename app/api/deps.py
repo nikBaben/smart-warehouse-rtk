@@ -47,6 +47,9 @@ def get_warehouse_repo(db: AsyncSession = Depends(get_session)) -> WarehouseRepo
 def get_user_repo(db: AsyncSession = Depends(get_session)) -> UserRepository:
     return UserRepository(db)
 
+def get_kkid_user_repo(db: AsyncSession = Depends(get_session)) -> KkidUserRepository:
+    return KkidUserRepository(db)
+
 
 # --- Services ---
 def get_robot_service(repo: RobotRepository = Depends(get_robot_repo)) -> RobotService:
@@ -65,6 +68,9 @@ async def get_auth_service(session: AsyncSession = Depends(get_session)) -> Auth
 
 def get_user_service(repo: UserRepository = Depends(get_user_repo)) -> UserService:
     return UserService(repo)
+
+def get_keycloak_service() -> KeycloakService:
+    return KeycloakService()
 
 def get_inventory_history_repo(db: AsyncSession = Depends(get_session)) -> InventoryHistoryRepository:
     return InventoryHistoryRepository(db)

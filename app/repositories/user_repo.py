@@ -23,13 +23,19 @@ class UserRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_id(self, user_id: int) -> Optional[User]:
+        result = await self.session.execute(
+            select(User).where(User.id == user_id)
+        )
+        return result.scalar_one_or_none()
+
     async def create(self, user_create: UserCreate) -> User:
         user = User(
             email=user_create.email,
             name=user_create.name,
             role=user_create.role
         )
-        self.session.add(user)
+        self.session.add(user)  # ← исправлено с user_repo.add на self.session.add
         await self.session.commit()
         await self.session.refresh(user)
         return user

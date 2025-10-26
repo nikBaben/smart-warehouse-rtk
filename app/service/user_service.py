@@ -40,6 +40,21 @@ class UserService:
         
         return user
 
+    async def create_user_with_keycloak(self, user_create: UserCreate, kkid: str):
+        """Создать пользователя в БД и связать с Keycloak ID"""
+        try:
+            # Создаем пользователя в БД
+            user = await self.user_repo.create(user_create)
+            
+            # Создаем связь с Keycloak
+            await self.kkid_user_repo.create(kkid, user.id)
+            
+            return user
+        except Exception as e:
+            # Если произошла ошибка, откатываем сессию
+            await self.session.rollback()
+            raise e
+
     async def get_user_by_kkid(self, kkid: str):
         """Получить пользователя по Keycloak ID"""
         return await self.user_repo.get_by_kkid(kkid)

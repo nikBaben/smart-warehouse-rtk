@@ -1,7 +1,7 @@
 import logging
 import httpx
-from typing import Dict, Any
-from keycloak import KeycloakOpenID
+from typing import Dict, Any, Optional
+from keycloak import KeycloakOpenID, KeycloakAdmin
 from keycloak.exceptions import KeycloakError
 from fastapi import HTTPException, status
 from app.core.config import settings
@@ -24,6 +24,93 @@ class KeycloakService:
             verify=True
         )
 
+        # Инициализация KeycloakAdmin для управления пользователями
+        self.keycloak_admin = KeycloakAdmin(
+            server_url=settings.KEYCLOAK_URL,
+            username=settings.KEYCLOAK_ADMIN_USERNAME,
+            password=settings.KEYCLOAK_ADMIN_PASSWORD,
+            realm_name=settings.KEYCLOAK_REALM,
+            verify=True
+        )
+
+    async def create_user(self, email: str, password: str, first_name: str, last_name: str = "", username: str = None) -> str:
+        """Создать пользователя в Keycloak"""
+        try:
+            if username is None:
+                username = email
+
+            logger.info(f"Creating user in Keycloak: {email}")
+
+            user_data = {
+                "email": email,
+                "username": username,
+                "firstName": first_name,
+                "lastName": last_name,
+                "enabled": True,
+                "emailVerified": True,
+                "credentials": [{
+                    "type": "password",
+                    "value": password,
+                    "temporary": False
+                }]
+            }
+
+            # Создаем пользователя в Keycloak
+            user_id = self.keycloak_admin.create_user(user_data)
+            
+            logger.info(f"✅ User created in Keycloak: {user_id}, email: {email}")
+            return user_id
+
+        except KeycloakError as e:
+            logger.error(f"❌ Keycloak error creating user {email}: {e}")
+            if "User exists with same username" in str(e) or "User exists with same email" in str(e):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"User with email {email} already exists in Keycloak"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to create user in Keycloak: {str(e)}"
+            )
+        except Exception as e:
+            logger.error(f"❌ Unexpected error creating user in Keycloak: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create user: {str(e)}"
+            )
+
+    async def delete_user(self, user_id: str) -> bool:
+        """Удалить пользователя из Keycloak"""
+        try:
+            logger.info(f"Deleting user from Keycloak: {user_id}")
+            self.keycloak_admin.delete_user(user_id)
+            logger.info(f"✅ User deleted from Keycloak: {user_id}")
+            return True
+        except KeycloakError as e:
+            logger.error(f"❌ Keycloak error deleting user {user_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to delete user from Keycloak: {str(e)}"
+            )
+        except Exception as e:
+            logger.error(f"❌ Unexpected error deleting user from Keycloak: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete user: {str(e)}"
+            )
+
+    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Найти пользователя в Keycloak по email"""
+        try:
+            users = self.keycloak_admin.get_users({"email": email})
+            if users:
+                return users[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error searching user by email {email}: {e}")
+            return None
+
+    # Существующие методы остаются без изменений
     async def login(self, email: str, password: str) -> Dict[str, Any]:
         """Аутентификация пользователя"""
         try:
