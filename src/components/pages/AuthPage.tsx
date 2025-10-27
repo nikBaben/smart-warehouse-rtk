@@ -31,7 +31,7 @@ function AuthPage() {
 		const token = localStorage.getItem('token')
 		const payload = { email, password }
 		try{
-			const response = await axios.post ('https://rtk-smart-warehouse.ru/api/v1/auth/login', payload, {
+			const response = await axios.post ('https://dev.rtk-smart-warehouse.ru/api/v1/auth/login', payload, {
 					headers: {
 						'Content-Type': 'application/json',
 					},
@@ -46,7 +46,7 @@ function AuthPage() {
 				first_name,
 				last_name,
 				role: userData.role,
-				email: userData.user
+				email: userData.email
 			})
 			console.log(userData)
 			navigate('/')

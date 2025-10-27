@@ -8,17 +8,19 @@ import {
   Tooltip,
 } from "recharts";
 import { motion } from "framer-motion";
+import { useSocketStore } from '../../store/useSocketStore.tsx'
 
 export function RobotActivityChart(){
-  const data = [
-    { time: "0", value: 80 },
-    { time: "10", value: 100 },
-    { time: "20", value: 20 },
-    { time: "30", value: 75 },
-    { time: "40", value: 85 },
-    { time: "50", value: 5 },
-    { time: "60", value: 70 },
-  ];
+	const { activitySeries } = useSocketStore()
+
+	const data = activitySeries?.series.map(([iso,value])=>({
+		time: new Date(iso).toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+		}), 
+		value,
+	})) || []
+	console.log('📊 activitySeries:', activitySeries)
 
   return (
 		<div className='w-full h-full flex items-center justify-center'>

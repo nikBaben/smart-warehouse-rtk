@@ -6,7 +6,7 @@ export function useWarehouseSocket(warehouseId:string){
   const { updateData } = useSocketStore()
   
   const { lastMessage, readyState } = useWebSocket(
-		`https://rtk-smart-warehouse.ru/api/v1/ws/warehouses/${warehouseId}`,
+		`wss://dev.rtk-smart-warehouse.ru/api/ws/warehouses/${warehouseId}`,
 		{
 			shouldReconnect: () => true,
 			reconnectAttempts: Infinity,
@@ -14,6 +14,7 @@ export function useWarehouseSocket(warehouseId:string){
 		}
 	)
   useEffect(() => {
+		if (!warehouseId) return
 		if (lastMessage?.data) {
 			try {
 				const parsed = JSON.parse(lastMessage.data)

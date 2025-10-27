@@ -1,11 +1,11 @@
-import { useState} from "react";
-import { DataTable } from "../widgets/DataTable";
+import { useEffect, useState} from "react";
+import { ScanStoryTable } from "../widgets/ScanStoryTable.tsx";
 import { RobotActivityChart } from "@/components/widgets/RobotActivityChart";
 import { Button } from "@/components/ui/button";
 import AddLarge from '@atomaro/icons/24/action/AddLarge';
-import ChevronDown from '@atomaro/icons/24/navigation/ChevronDown';
 import { ForecastAI } from "../widgets/ForecastAI";
 import { UserAvatar } from '../ui/UserAvatar.tsx'
+import { AddRobotProductDialog } from '../ui/AddRobotProductDialog.tsx'
 
 import { useWarehouseSocket } from '../../hooks/useWarehouseSocket.tsx'
 import { useSocketStore } from '../../store/useSocketStore.tsx'
@@ -20,122 +20,27 @@ import {
 } from '@/components/ui/select'
 
 function DashboardPage(){
+	const token = localStorage.getItem('token')
 	const { warehouses, selectedWarehouse, setSelectedWarehouse } = useWarehouseStore()
-	const { readyState } = useWarehouseSocket(
-		'900ddb19-3f2a-4a79-921e-29b243ac438b'
-	)
-	const { avgBattery, statusCount } = useSocketStore()
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const data = [
-      {
-      time: "14:00:00",
-      robot: "M-532",
-      department: "Разгрузка",
-      product: "Ящик деревянный – 00000",
-      quantity: 36,
-      status: "Низкий остаток",
-      },
-      {
-      time: "13:56:29",
-      robot: "E-429",
-      department: "Разгрузка",
-      product: "Фигурка коллекционная – 32400130",
-      quantity: 36,
-      status: "OK",
-      },
-      {
-      time: "13:41:21",
-      robot: "M-532",
-      department: "Разгрузка",
-      product: "Монитор XXXXXXXXX – 00000",
-      quantity: 36,
-      status: "Низкий остаток",
-      },
-      {
-      time: "13:35:16",
-      robot: "M-532",
-      department: "Разгрузка",
-      product: "Apple iPhone 17 Pro Max – 32400130",
-      quantity: 36,
-      status: "Критично",
-      },
-      {
-      time: "13:35:16",
-      robot: "M-532",
-      department: "Разгрузка",
-      product: "Apple iPhone 17 Pro Max – 32400130",
-      quantity: 36,
-      status: "Критично",
-      },
-      {
-      time: "13:35:16",
-      robot: "M-532",
-      department: "Разгрузка",
-      product: "Apple iPhone 17 Pro Max – 32400130",
-      quantity: 36,
-      status: "Критично",
-      },
-      {
-      time: "13:35:16",
-      robot: "M-532",
-      department: "Разгрузка",
-      product: "Apple iPhone 17 Pro Max – 32400130",
-      quantity: 36,
-      status: "Критично",
-      },
-      {
-      time: "13:35:16",
-      robot: "M-532",
-      department: "Разгрузка",
-      product: "Apple iPhone 17 Pro Max – 32400130",
-      quantity: 36,
-      status: "Критично",
-      },
-      {
-      time: "13:35:16",
-      robot: "M-532",
-      department: "Разгрузка",
-      product: "Apple iPhone 17 Pro Max – 32400130",
-      quantity: 36,
-      status: "Критично",
-      },  
-  ];
-  const getStatusColor = (status: string) => {
-      switch (status) {
-      case "OK":
-          return "bg-[#0ACB5B]";
-      case "Низкий остаток":
-          return "bg-[#FDA610]";
-      case "Критично":
-          return "bg-[#FF4F12]";
-      default:
-          return "bg-gray-400";
-      }
-  };
-  type Column<T> = {
-      header: string;
-      accessor: keyof T | ((row: T) => React.ReactNode);
-      className?: string;
-      align?: "left" | "center" | "right";
-  };
-  const columns: Column<typeof data[0]>[] = [
-      { header: "время проверки", accessor: "time" },
-      { header: "id робота", accessor: "robot" },
-      { header: "отдел склада", accessor: "department" },
-      { header: "название товара и артикул", accessor: "product" },
-      { header: "количество", accessor: "quantity", className: "font-semibold", align: "center" },
-      {
-          header: "статус",
-          accessor: (row) => (
-          <span
-              className={`${getStatusColor(row.status)} text-black text-[12px] font-medium px-3 py-[3px] rounded-[8px]`}
-          >
-              {row.status}
-          </span>
-          ),
-          align: "left",
-      },
-  ];
+	const { avgBattery, robotsData, scanned24h, criticalUnique, statusAvg } = useSocketStore()
+	const { readyState } = useWarehouseSocket(selectedWarehouse?.id ?? '')
+	const getStatusName = (status: string) => {
+		switch (status) {
+			case 'ok':
+				return 'ОК'
+			case 'low':
+				return 'Низкий остаток'
+			case 'critical':
+				return 'Критично'
+			default:
+				return 'Неизвестен'
+		}
+	}
+
+	const { fetchWarehouses } = useWarehouseStore()
+	useEffect(()=>{
+		if (token) fetchWarehouses(token)
+	},[token])
   return (
 		<div className='flex bg-[#F4F4F5] min-h-screen'>
 			<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
@@ -163,10 +68,7 @@ function DashboardPage(){
 							</Select>
 						</div>
 						<div className='flex items-center space-x-5'>
-							<Button className='w-[319px] h-[38px] border-[#CCCCCC] border-[1px] rounded-[10px] text-[20px] text-[#7700FF] flex items-center justify-between px-4'>
-								Добавить робота или товар
-								<AddLarge fill='#7700FF' className='w-[20px] h-[20px]' />
-							</Button>
+							<AddRobotProductDialog/>
 							<UserAvatar />
 						</div>
 					</div>
@@ -184,7 +86,9 @@ function DashboardPage(){
 										Критические остатки
 									</h3>
 									<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
-										<p className='text-[28px] font-bold'>102</p>
+										<p className='text-[28px] font-bold'>
+											{criticalUnique?.unique_articles}
+										</p>
 										<p className='text-[10px] text-[#CCCCCC] font-light'>
 											{' '}
 											количество SKU{' '}
@@ -196,7 +100,7 @@ function DashboardPage(){
 										Проверено за 24ч
 									</h3>
 									<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
-										<p className='text-[28px] font-bold'>1430</p>
+										<p className='text-[28px] font-bold'>{scanned24h?.count}</p>
 										<p className='text-[10px] text-[#CCCCCC] font-light'>
 											{' '}
 											позиций{' '}
@@ -208,9 +112,7 @@ function DashboardPage(){
 										Ср. статус по складу
 									</h3>
 									<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
-										<p className='text-[28px] font-bold'>
-											критическое состояние
-										</p>
+										<p className='text-[28px] font-bold'>{getStatusName(statusAvg?.status || '')}</p>
 										<p className='text-[10px] text-[#CCCCCC] font-light'>
 											{' '}
 											статистика{' '}
@@ -232,7 +134,7 @@ function DashboardPage(){
 										<h3 className='font-medium text-[18px]'>Роботы</h3>
 										<div className='flex flex-col items-center justify-center space-y-[-8px]'>
 											<span className='text-[30px] font-bold'>
-												{statusCount?.per_status}/{statusCount?.statuses}
+												{robotsData?.active_robots}/{robotsData?.robots}
 											</span>
 											<p className='text-[10px] text-[#CCCCCC] font-light'>
 												активных/всего
@@ -245,7 +147,7 @@ function DashboardPage(){
 										</h3>
 										<div className='flex flex-col items-center justify-center space-y-[-8px]'>
 											<span className='text-[30px] font-bold'>
-												{avgBattery?.avg_battery}
+												{avgBattery?.avg_battery.toFixed(2)}%
 											</span>
 											<p className='text-[10px] text-[#CCCCCC] font-light'>
 												среднее значение
@@ -258,7 +160,7 @@ function DashboardPage(){
 								<h3 className='font-medium text-[18px]'>
 									Последние сканирования
 								</h3>
-								<DataTable data={data} columns={columns} />
+								<ScanStoryTable/>
 							</div>
 							<div className='bg-white rounded-[10px] pl-[10px] pt-[6px] pr-[10px] pb-[10px] col-span-2'>
 								<ForecastAI />

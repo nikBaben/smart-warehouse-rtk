@@ -29,7 +29,7 @@ export const useWarehouseStore = create<WarehouseStore>((set, get) => ({
 		set({ loading: true, error: null })
 		try {
 			const res = await axios.get(
-				'https://rtk-smart-warehouse.ru/api/v1/warehouses',
+				'https://dev.rtk-smart-warehouse.ru/api/v1/warehouses',
 				{
 					headers: { Authorization: `Bearer ${token}` },
 				}

@@ -10,12 +10,40 @@ body {
   background-color: rgb(249 250 251);
   margin: 0;
   min-width: 320px;
+  scroll-behavior: smooth;
   min-height: 100vh;
+}
+div{
+  scroll-behavior: smooth;
 }
 
 input::placeholder {
   color: #9699A3;
   opacity: 1;
+}
+
+body::-webkit-scrollbar {
+  width: 6px;               /* ширина scrollbar */
+}
+body::-webkit-scrollbar-track {
+  background: #FFFFFF;        /* цвет дорожки */
+}
+body::-webkit-scrollbar-thumb {
+  background-color:#D1D1D1;    /* цвет плашки */
+  border-radius: 20px;       /* закругления плашки */
+}
+
+div::-webkit-scrollbar {
+  width: 10px;               /* ширина scrollbar */
+}
+div::-webkit-scrollbar-track {
+  background: #FFFFFF;        /* цвет дорожки */
+  margin: 10px;
+}
+div::-webkit-scrollbar-thumb {
+  background-color:#D1D1D1;    /* цвет плашки */
+  border-radius: 30px;       /* закругления плашки */
+  border: 3px solid white;
 }
 
 .pagename-font{
@@ -77,7 +105,7 @@ input::placeholder {
 }
 
 .add-warehouse-button{
-  @apply w-[213px] h-[38px] cursor-pointer 
+  @apply w-full h-[38px] cursor-pointer 
   border-[#CCCCCC] border-[2px] rounded-[10px] text-[20px] text-[#7700FF]
   flex items-center justify-between 
   shadow-none

@@ -47,7 +47,7 @@ export function AddWarehouseDialog(){
 		}
 
 			const response = await axios.post(
-				'https://rtk-smart-warehouse.ru/api/v1/warehouse',
+				'https://dev.rtk-smart-warehouse.ru/api/v1/warehouse',
 				payload,
 				{ headers: { 'Content-Type': 'application/json' } }
 			)

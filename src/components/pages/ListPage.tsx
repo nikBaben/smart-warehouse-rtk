@@ -105,6 +105,7 @@ function ListPage() {
 			return
 		}
 		fetchWarehouses(token)
+		setSelectedWarehouse(null)
 	}, [token])
 
 	//-----СИНХРОНИЗАЦИЯ ДАННЫХ ПРИ ВЫБОРЕ СКЛАДА-----
@@ -134,10 +135,10 @@ function ListPage() {
 		try {
 			const [robotsRes, productsRes] = await Promise.all([
 				axios.get(
-					`https://rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${warehouse.id}`
+					`https://dev.rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${warehouse.id}`
 				),
 				axios.get(
-					`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${warehouse.id}`,
+					`https://dev.rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${warehouse.id}`,
 					{ headers: { Authorization: `Bearer ${token}` } }
 				),
 			])
@@ -160,7 +161,7 @@ function ListPage() {
 			}
 
 			const response = await axios.post(
-				'https://rtk-smart-warehouse.ru/api/v1/robot',
+				'https://dev.rtk-smart-warehouse.ru/api/v1/robot',
 				payload,
 				{ headers: { 'Content-Type': 'application/json' } }
 			)
@@ -170,7 +171,7 @@ function ListPage() {
 
 			// обновляем список роботов для текущего склада
 			const robotsResponse = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${selectedWarehouse.id}`
+				`https://dev.rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${selectedWarehouse.id}`
 			)
 			setRobots(robotsResponse.data)
 		} catch (error) {
@@ -194,7 +195,7 @@ function ListPage() {
 			}
 
 			const response = await axios.patch(
-				`https://rtk-smart-warehouse.ru/api/v1/warehouse/${selectedWarehouse.id}`,
+				`https://dev.rtk-smart-warehouse.ru/api/v1/warehouse/${selectedWarehouse.id}`,
 				updatedData,
 				{ headers: { 'Content-Type': 'application/json' } }
 			)
@@ -242,7 +243,7 @@ function ListPage() {
 			}
 
 			const response = await axios.post(
-				'https://rtk-smart-warehouse.ru/api/v1/products',
+				'https://dev.rtk-smart-warehouse.ru/api/v1/products',
 				payload,
 				{
 					headers: {
@@ -257,7 +258,7 @@ function ListPage() {
 
 			//обновляем список товаров текущего склада
 			const updatedProducts = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`,
+				`https://dev.rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`,
 				{
 					headers: {
 						Authorization: `Bearer ${token}`,
@@ -316,7 +317,7 @@ function ListPage() {
 			}
 
 			await axios.patch(
-				`https://rtk-smart-warehouse.ru/api/v1/products/${editedProduct.id}`,
+				`https://dev.rtk-smart-warehouse.ru/api/v1/products/${editedProduct.id}`,
 				payload,
 				{ headers: { 'Content-Type': 'application/json' } }
 			)
@@ -325,7 +326,7 @@ function ListPage() {
 
 			// обновляем список товаров
 			const updatedProducts = await axios.get(
-				`https://rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`,
+				`https://dev.rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`,
 				{
 					headers: {
 						Authorization: `Bearer ${token}`,

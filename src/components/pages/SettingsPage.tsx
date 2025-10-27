@@ -69,7 +69,8 @@ function SettingsPage(){
 			}
 
 			const response = await axios.put(
-				`https://rtk-smart-warehouse.ru/api/v1/user/${user.id}`,payload,
+				`https://dev.rtk-smart-warehouse.ru/api/v1/user/${user.id}`,
+				payload,
 				{
 					headers: {
 						Authorization: `Bearer ${token}`,
@@ -125,7 +126,7 @@ function SettingsPage(){
 											{user?.first_name} {user?.last_name}
 										</span>
 										<span className='text-[12px] font-light'>
-											логин: vvsmolin@gmail.com
+											логин: {user?.email}
 										</span>
 									</div>
 								</div>
