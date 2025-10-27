@@ -33,7 +33,12 @@ app.include_router(ws_router.router, prefix="/api")
 # Запускаем асинхронный watcher в фоне.
 @app.on_event("startup")
 async def start_robot_mover():
-    asyncio.create_task(run_robot_watcher(interval=2, max_robot_workers=20,max_warehouse_workers=4))
+    asyncio.create_task(run_robot_watcher(
+            interval=2,
+            max_robot_workers=20,
+            max_warehouse_workers=4,
+            require_singleton=True,  # защита от двойного запуска
+        ))
     asyncio.create_task(robot_events_broadcaster())
     asyncio.create_task(continuous_product_snapshot_streamer(interval=10))
     asyncio.create_task(continuous_robot_avg_streamer(interval=60))

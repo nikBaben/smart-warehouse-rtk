@@ -31,7 +31,7 @@ class RobotService:
         rnd = random.randint(0, 1295)
         return base36(ts % 1296) + base36(rnd)
 
-    async def create_robot(self, data: RobotCreate, user_id: int) -> Robot:
+    async def create_robot(self, data: RobotCreate)->Robot:#, user_id: int) -> Robot:
 
         robot_id = await self.create_id()
 
@@ -49,9 +49,9 @@ class RobotService:
                 warehouse_id=data.warehouse_id, 
                 check_warehouse_exists=True
             )
-            await self.alarm_service.create_alarm(
-                AlarmCreate(user_id=user_id, message="Робот создан")
-            )
+            #await self.alarm_service.create_alarm(
+            #    AlarmCreate(user_id=user_id, message="Робот создан")
+            #)
             return robot
         
         
