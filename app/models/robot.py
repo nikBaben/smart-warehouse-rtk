@@ -21,17 +21,25 @@ class Robot(Base):
         nullable=False,
         index=True,
     )
+    robot_history: Mapped[list["RobotHistory"]] = relationship(
+        back_populates="robot",
+        lazy="selectin",
+        cascade="save-update, merge",   # без delete / delete-orphan
+        passive_deletes=True,           # БД выполнит SET NULL
+    )
 
     warehouse: Mapped["Warehouse"] = relationship(
         back_populates="robots",
         lazy="joined", 
     )
 
-    history: Mapped[list["InventoryHistory"]] = relationship(  # type: ignore
+    history: Mapped[list["InventoryHistory"]] = relationship(
         back_populates="robot",
         lazy="selectin",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
+        # ВАЖНО: не удаляем историю при удалении робота
+        # (оставляем поведение по умолчанию: save-update, merge)
+        cascade="save-update, merge",
+        passive_deletes=True,   # доверяем БД выполнить ON DELETE SET NULL
     )
 
     created_at: Mapped[datetime] = mapped_column(

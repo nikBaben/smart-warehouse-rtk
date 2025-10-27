@@ -15,17 +15,23 @@ class InventoryHistory(Base):
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
 
     # ссылки на объекты
-    product_id: Mapped[Optional[str]] = mapped_column(
+    product_id: Mapped[str | None] = mapped_column(
         String(50),
-        ForeignKey("products.id", ondelete="SET NULL", onupdate="CASCADE"),
-        nullable=True,
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,                # важно!
         index=True,
     )
+    
     robot_id: Mapped[Optional[str]] = mapped_column(
         String(50),
         ForeignKey("robots.id", ondelete="SET NULL", onupdate="CASCADE"),
         nullable=True,
         index=True,
+    )
+
+    robot: Mapped[Optional["Robot"]] = relationship(
+        back_populates="history",
+        lazy="joined",
     )
     warehouse_id: Mapped[str] = mapped_column(
         String(50),
@@ -35,10 +41,6 @@ class InventoryHistory(Base):
     )
 
     product: Mapped[Optional["Product"]] = relationship(
-        back_populates="history",
-        lazy="joined",
-    )
-    robot: Mapped[Optional["Robot"]] = relationship(
         back_populates="history",
         lazy="joined",
     )

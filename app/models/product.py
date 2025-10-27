@@ -30,11 +30,11 @@ class Product(Base):
         lazy="joined",  
     )
 
-    history: Mapped[list["InventoryHistory"]] = relationship(  # type: ignore
+    history: Mapped[list["InventoryHistory"]] = relationship(
         back_populates="product",
         lazy="selectin",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
+        cascade="save-update, merge",  # или вообще убрать параметр cascade
+        passive_deletes=True,          # БД сама проставит NULL, ORM не трогает
     )
 
     created_at: Mapped[datetime] = mapped_column(
