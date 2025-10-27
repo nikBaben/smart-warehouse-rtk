@@ -21,7 +21,8 @@ from sqlalchemy.orm import selectinload
 
 # settings может и не содержать DATABASE_URL — это ок, ниже больше не полагаемся на него напрямую
 from app.core.config import settings
-from app.ws.ws_manager import EVENTS
+# ВАЖНО: импортируем ДВЕ janus-очереди
+from app.ws.ws_manager import EVENTS_COMMON, EVENTS_ROBOT
 from app.models.warehouse import Warehouse
 from app.models.robot import Robot
 from app.models.product import Product
@@ -42,7 +43,8 @@ DOCK_X, DOCK_Y = 0, 0                    # док-станция — ровно 
 SCAN_DURATION = timedelta(seconds=5)     # длительность скана
 CHARGE_DURATION = timedelta(minutes=15)  # длительность полной зарядки до 100%
 MIN_BATT_DROP_PER_STEP = 0.2             # ниже расход на шаг (в процентах)
-RESCAN_COOLDOWN = timedelta(seconds=10)   # повторный скан того же товара — не чаще чем раз в 5 минут
+# делаем рескан «тише», чтобы не штормить WS
+RESCAN_COOLDOWN = timedelta(minutes=3)   # повторный скан того же товара — не чаще чем раз в 3 минуты
 
 # =========================
 # Конфигурация логирования истории робота (оптимизация нагрузки на БД)
@@ -85,6 +87,13 @@ EVENT_QUEUE_DROP_OLDEST = True  # при переполнении выбрасы
 INVENTORY_HISTORY_RETENTION = timedelta(hours=6)   # сколько держим полные сканы
 INVENTORY_HISTORY_CLEAN_CHUNK = 1000               # сколько записей удаляем за проход
 WAREHOUSE_JANITOR_EVERY = timedelta(minutes=5)     # частота служебной уборки per warehouse
+
+# =========================
+# Rate-limit и типы «роботных» событий
+# =========================
+ROBOT_EVENT_TYPES = {"robot.position", "product.scan"}
+POSITION_RATE_LIMIT = timedelta(seconds=2)  # частота отправки позиций per-warehouse
+_LAST_POSITION_SENT_AT: Dict[str, datetime] = {}
 
 # =========================
 # Синглтон-гарды для вотчера
@@ -550,33 +559,43 @@ def _pick_goal(
     return start
 
 # =========================
-# Отправка событий (неблокирующая + антидубль, с защитой от переполнения)
+# Отправка событий (неблокирующая + антидубль, с разделением очередей)
 # =========================
 
 def _emit(evt: dict) -> None:
+    """Кладём событие в соответствующую janus-очередь: ROBOT или COMMON, с вытеснением старого при переполнении."""
+    q = EVENTS_ROBOT if evt.get("type") in ROBOT_EVENT_TYPES else EVENTS_COMMON
     try:
-        EVENTS.sync_q.put_nowait(evt)
+        q.sync_q.put_nowait(evt)  # janus: синхронная сторона
     except queue.Full:
-        # при переполнении — выбрасываем старый и пробуем снова
-        if EVENT_QUEUE_DROP_OLDEST:
-            try:
-                EVENTS.sync_q.get_nowait()
-            except Exception:
-                pass
-            try:
-                EVENTS.sync_q.put_nowait(evt)
-            except Exception:
-                pass
+        # при переполнении — выбрасываем старый элемент ЭТОЙ ЖЕ очереди (не трогаем другую)
+        try:
+            q.sync_q.get_nowait()
+        except Exception:
+            pass
+        try:
+            q.sync_q.put_nowait(evt)
+        except Exception:
+            pass
     except Exception:
         pass
 
 
 def _emit_position(warehouse_id: str, robot_id: str, x: int, y: int, status: str, battery_level: float) -> None:
+    # коалесинг по состоянию
     batt_int = int(round(battery_level))
     key = (x, y, status or "idle", batt_int)
     last = _LAST_EMITTED_STATE.get(robot_id)
     if last == key:
         return
+
+    # rate-limit per-warehouse
+    now = datetime.now(timezone.utc)
+    last_ts = _LAST_POSITION_SENT_AT.get(warehouse_id, datetime.fromtimestamp(0, tz=timezone.utc))
+    if (now - last_ts) < POSITION_RATE_LIMIT:
+        return
+    _LAST_POSITION_SENT_AT[warehouse_id] = now
+
     _LAST_EMITTED_STATE[robot_id] = key
     _emit({
         "type": "robot.position",
@@ -922,6 +941,7 @@ async def run_robot_watcher(
     - В каждом воркере СОБСТВЕННЫЙ AsyncEngine/Session, привязанные к его loop
       (исправляет 'Future attached to a different loop').
     - Защита от роста памяти: ограниченная очередь событий + периодический janitor.
+    - События маршрутизируются в отдельные janus-очереди (COMMON/ROBOT), чтобы телеметрия не блокировала прочие WS.
     """
     global _WATCHER_RUNNING
 
@@ -934,25 +954,11 @@ async def run_robot_watcher(
             print(f"ℹ️ Robot watcher: another instance holds lock {singleton_lock_path!r}. Skipping start.", flush=True)
             return
 
-    # гарантируем ограниченную очередь событий
+    # гарантируем ограниченные очереди (janus уже ограничены в ws_manager),
+    # здесь лишь информативный лог размеров:
     try:
-        maxsize = getattr(EVENTS.sync_q, "maxsize", 0)
-        if not maxsize:
-            # если очередь без лимита — заменим на ограниченную
-            try:
-                old_q = EVENTS.sync_q
-                new_q: queue.Queue = queue.Queue(maxsize=EVENT_QUEUE_MAXSIZE)
-                # попробуем быстро переложить то, что есть (в разумных пределах)
-                for _ in range(EVENT_QUEUE_MAXSIZE // 10):
-                    try:
-                        item = old_q.get_nowait()
-                        new_q.put_nowait(item)
-                    except Exception:
-                        break
-                EVENTS.sync_q = new_q  # type: ignore[attr-defined]
-                print(f"ℹ️ EVENTS.sync_q replaced with bounded queue (maxsize={EVENT_QUEUE_MAXSIZE}).", flush=True)
-            except Exception as e:
-                print(f"⚠️ Failed to bound EVENTS.sync_q: {e}", flush=True)
+        print(f"ℹ️ Queues: common_max={getattr(EVENTS_COMMON.sync_q, 'maxsize', '?')}, "
+              f"robot_max={getattr(EVENTS_ROBOT.sync_q, 'maxsize', '?')}", flush=True)
     except Exception:
         pass
 

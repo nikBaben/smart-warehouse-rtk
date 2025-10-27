@@ -1,12 +1,14 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Dict, Any
 import asyncio
+import queue
 from datetime import datetime, timezone
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ws.ws_manager import EVENTS, manager
+# ВАЖНО: теперь импортируем две очереди и менеджер
+from app.ws.ws_manager import EVENTS_COMMON, manager
 from app.models.robot import Robot
 from app.db.session import async_session
 
@@ -15,9 +17,28 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _safe_put_common(event: Dict[str, Any]) -> None:
+    """
+    Кладём событие в 'общую' janus-очередь без блокировок.
+    При переполнении вытесняем самый старый элемент той же очереди.
+    """
+    q = EVENTS_COMMON.sync_q  # синхронная сторона janus
+    try:
+        q.put_nowait(event)
+    except queue.Full:
+        try:
+            q.get_nowait()  # выкидываем старое
+        except Exception:
+            pass
+        try:
+            q.put_nowait(event)
+        except Exception:
+            pass
+
+
 # ===== Публикации событий по средней зарядке роботов =====
 async def publish_robot_avg_snapshot(session: AsyncSession, warehouse_id: str) -> None:
-    """Отправляет в очередь событие со средней зарядкой роботов по складу."""
+    """Отправляет в очередь событие со средней зарядкой роботов по складу (идёт в COMMON-очередь)."""
     try:
         result = await session.execute(
             select(func.avg(Robot.battery_level)).where(Robot.warehouse_id == warehouse_id)
@@ -32,7 +53,7 @@ async def publish_robot_avg_snapshot(session: AsyncSession, warehouse_id: str) -
             "ts": _now_iso(),
         }
 
-        EVENTS.sync_q.put(event)
+        _safe_put_common(event)
         print(f"⚡ [publish_robot_avg_snapshot] Склад {warehouse_id}: средняя зарядка = {avg}%")
     except Exception as e:
         print(f"❌ Ошибка в publish_robot_avg_snapshot для склада {warehouse_id}: {e}")
@@ -66,6 +87,7 @@ async def continuous_robot_avg_streamer(interval: float = 2.0) -> None:
     """
     Каждые `interval` секунд отправляет среднюю зарядку для всех складов,
     на которые подписаны активные WS-клиенты.
+    События также идут в 'общую' очередь (COMMON), чтобы не конкурировать с телеметрией роботов.
     """
     print("🚀 continuous_robot_avg_streamer запущен.")
     try:
@@ -80,12 +102,10 @@ async def continuous_robot_avg_streamer(interval: float = 2.0) -> None:
                             await publish_robot_avg_snapshot(session, warehouse_id)
                 else:
                     print("ℹ️ Нет активных подписчиков на WebSocket.")
-
             except Exception as inner_err:
                 print(f"❌ Ошибка внутри цикла стримера: {inner_err}")
 
             await asyncio.sleep(interval)
-
     except asyncio.CancelledError:
         print("🛑 continuous_robot_avg_streamer остановлен (CancelledError).")
     except Exception as e:
