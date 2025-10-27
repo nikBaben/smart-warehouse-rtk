@@ -1,13 +1,13 @@
+# app/robot_watcher.py
 from __future__ import annotations
 
 import asyncio
 import random
 import uuid
 import threading
-import queue
 import os
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Tuple, Optional, Set, Callable, Awaitable, Union
+from typing import Dict, List, Tuple, Optional, Set, Callable, Awaitable
 
 # POSIX file-lock для синглтона
 try:
@@ -19,16 +19,20 @@ from sqlalchemy import select, distinct, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine, AsyncEngine
 from sqlalchemy.orm import selectinload
 
-# settings может и не содержать DATABASE_URL — это ок, ниже больше не полагаемся на него напрямую
 from app.core.config import settings
-# ВАЖНО: импортируем ДВЕ janus-очереди
-from app.ws.ws_manager import EVENTS_COMMON, EVENTS_ROBOT
 from app.models.warehouse import Warehouse
 from app.models.robot import Robot
 from app.models.product import Product
 from app.models.inventory_history import InventoryHistory
 from app.service.robot_history import write_robot_status_event  # лог статусов
 
+# Шина событий (Redis) — фабрики bus на текущий loop
+from app.events.bus import (
+    get_bus_for_current_loop,
+    close_bus_for_current_loop,
+    ROBOT_CH,
+    COMMON_CH,
+)
 
 # =========================
 # Управление форматом событий позиции
@@ -39,21 +43,20 @@ EMIT_POSITION_BATCH = False      # один батч на склад за тик
 # =========================
 # Параметры поля / зарядки / сканирования
 # =========================
-DOCK_X, DOCK_Y = 0, 0                    # док-станция — ровно (0,0)
-SCAN_DURATION = timedelta(seconds=5)     # длительность скана
-CHARGE_DURATION = timedelta(minutes=15)  # длительность полной зарядки до 100%
-MIN_BATT_DROP_PER_STEP = 0.2             # ниже расход на шаг (в процентах)
-# делаем рескан «тише», чтобы не штормить WS
-RESCAN_COOLDOWN = timedelta(minutes=3)   # повторный скан того же товара — не чаще чем раз в 3 минуты
+DOCK_X, DOCK_Y = 0, 0
+SCAN_DURATION = timedelta(seconds=5)
+CHARGE_DURATION = timedelta(minutes=15)
+MIN_BATT_DROP_PER_STEP = 0.2
+RESCAN_COOLDOWN = timedelta(minutes=3)
 
 # =========================
-# Конфигурация логирования истории робота (оптимизация нагрузки на БД)
+# Конфигурация логирования истории робота
 # =========================
-LOG_EVERY_TICK = False                          # если True — лог как раньше, каждый тик
-TICK_LOG_MIN_INTERVAL = timedelta(seconds=15)   # минимальный интервал heartbeat-логов при неизменном состоянии
+LOG_EVERY_TICK = False
+TICK_LOG_MIN_INTERVAL = timedelta(seconds=15)
 
 # =========================
-# Память процесса + блокировки (для потокобезопасности)
+# Память процесса + блокировки
 # =========================
 _TARGETS: Dict[str, Tuple[int, int]] = {}
 _CLAIMED_TARGETS: Dict[str, Set[Tuple[int, int]]] = {}
@@ -79,20 +82,18 @@ LAST_SCAN_TTL = timedelta(seconds=30)
 _MAX_CONCURRENT_ROBOTS_PER_WAREHOUSE = 8
 
 # =========================
-# Антизасор: события, ретеншн и клининг
+# Антизасор: ретеншн и клининг
 # =========================
-EVENT_QUEUE_MAXSIZE = int(os.getenv("EVENT_QUEUE_MAXSIZE", "10000"))
-EVENT_QUEUE_DROP_OLDEST = True  # при переполнении выбрасываем самый старый элемент
-
-INVENTORY_HISTORY_RETENTION = timedelta(hours=6)   # сколько держим полные сканы
-INVENTORY_HISTORY_CLEAN_CHUNK = 1000               # сколько записей удаляем за проход
-WAREHOUSE_JANITOR_EVERY = timedelta(minutes=5)     # частота служебной уборки per warehouse
+EVENT_QUEUE_MAXSIZE = 10000
+INVENTORY_HISTORY_RETENTION = timedelta(hours=6)
+INVENTORY_HISTORY_CLEAN_CHUNK = 1000
+WAREHOUSE_JANITOR_EVERY = timedelta(minutes=5)
 
 # =========================
-# Rate-limit и типы «роботных» событий
+# Типы «роботных» событий + rate-limit позиций
 # =========================
 ROBOT_EVENT_TYPES = {"robot.position", "product.scan"}
-POSITION_RATE_LIMIT = timedelta(seconds=2)  # частота отправки позиций per-warehouse
+POSITION_RATE_LIMIT = timedelta(seconds=2)
 _LAST_POSITION_SENT_AT: Dict[str, datetime] = {}
 
 # =========================
@@ -104,38 +105,6 @@ DEFAULT_WATCHER_LOCK_PATH = os.environ.get("ROBOT_WATCHER_LOCK", "/tmp/robot_wat
 
 # расписание уборки per warehouse
 _WAREHOUSE_NEXT_JANITOR_AT: Dict[str, datetime] = {}
-
-
-def _try_acquire_process_lock(lock_path: Optional[str]) -> bool:
-    global _LOCK_FILE_HANDLE
-    if not lock_path or fcntl is None:
-        return True
-    try:
-        fh = open(lock_path, "w")
-        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fh.write(f"pid={os.getpid()} time={datetime.now(timezone.utc).isoformat()}\n")
-        fh.flush()
-        _LOCK_FILE_HANDLE = fh
-        return True
-    except BlockingIOError:
-        return False
-    except Exception:
-        return True
-
-
-def _release_process_lock():
-    global _LOCK_FILE_HANDLE
-    if _LOCK_FILE_HANDLE is None:
-        return
-    try:
-        if fcntl is not None:
-            fcntl.flock(_LOCK_FILE_HANDLE, fcntl.LOCK_UN)
-    finally:
-        try:
-            _LOCK_FILE_HANDLE.close()
-        except Exception:
-            pass
-        _LOCK_FILE_HANDLE = None
 
 # =========================
 # Утилиты координат/полок
@@ -183,51 +152,34 @@ def _next_step_towards(start: Tuple[int, int], goal: Tuple[int, int]) -> Tuple[i
 
 
 def _neighbors(start: Tuple[int, int], max_x: int, max_y: int) -> List[Tuple[int, int]]:
-    """Соседние клетки по Манхэттену (4-связность) с учётом границ поля (y ∈ [1..max_y])."""
     sx, sy = start
-    cand = [
-        (sx + 1, sy), (sx - 1, sy),
-        (sx, sy + 1), (sx, sy - 1),
-    ]
-    res: List[Tuple[int, int]] = []
-    for x, y in cand:
-        if 0 <= x <= max_x and 1 <= y <= max_y:
-            res.append((x, y))
-    return res
+    cand = [(sx + 1, sy), (sx - 1, sy), (sx, sy + 1), (sx, sy - 1)]
+    return [(x, y) for x, y in cand if 0 <= x <= max_x and 1 <= y <= max_y]
 
 
 def _random_wander_target(start: Tuple[int, int], max_x: int, max_y: int) -> Tuple[int, int]:
-    """Цель для «бродяжничества», когда нет кандидатов для сканирования."""
     opts = [p for p in _neighbors(start, max_x, max_y) if p != start]
     return random.choice(opts) if opts else start
 
 # =========================
-# Главный sessionmaker для главного лупа (общий на процесс)
+# Сессии БД
 # =========================
 
 def _session_factory_main() -> async_sessionmaker[AsyncSession]:
     from app.db.session import async_session as app_sessionmaker
     return app_sessionmaker
 
-# ---------- НОВОЕ: надёжное определение DSN и фабрика engine/session под ТЕКУЩИЙ loop ----------
 
 def _resolve_db_url() -> str:
-    """
-    Берём URL из уже сконфигурированного главного sessionmaker (его bind.url).
-    Если вдруг недоступно — пробуем переменные окружения.
-    """
     try:
         main_maker = _session_factory_main()
-        # В разных версиях SQLAlchemy доступ к bind может лежать по-разному
         eng = getattr(main_maker, "bind", None)
         if eng is None:
-            eng = getattr(main_maker, "kw", {}).get("bind")  # fallback для 2.x
+            eng = getattr(main_maker, "kw", {}).get("bind")
         if eng is not None:
             try:
-                # 2.x
                 return eng.url.render_as_string(hide_password=False)
             except Exception:
-                # 1.4 стиль
                 return str(eng.url)
     except Exception:
         pass
@@ -237,29 +189,16 @@ def _resolve_db_url() -> str:
         if v:
             return v
 
-    # Последняя попытка — вдруг в settings под другим именем
     for attr in ("DATABASE_URL", "SQLALCHEMY_DATABASE_URI", "DB_DSN"):
         if hasattr(settings, attr):
             return getattr(settings, attr)  # type: ignore
 
-    raise RuntimeError(
-        "Не удалось определить URL базы данных: нет bind у основного sessionmaker, "
-        "и не найдены переменные окружения DATABASE_URL/SQLALCHEMY_DATABASE_URI/DB_DSN."
-    )
+    raise RuntimeError("Не удалось определить URL базы данных.")
 
 
 def _session_factory_for_current_loop() -> tuple[async_sessionmaker[AsyncSession], AsyncEngine]:
-    """
-    Создаёт НОВЫЙ AsyncEngine и async_sessionmaker, привязанные к текущему event loop.
-    Важно: не делим engine между разными лупами/тредами.
-    """
     db_url = _resolve_db_url()
-    engine = create_async_engine(
-        db_url,
-        pool_size=5,
-        max_overflow=10,
-        pool_pre_ping=True,
-    )
+    engine = create_async_engine(db_url, pool_size=5, max_overflow=10, pool_pre_ping=True)
     maker = async_sessionmaker(engine, expire_on_commit=False)
     return maker, engine
 
@@ -295,10 +234,7 @@ def _touch_robot(robot: Robot) -> None:
 # Работа с товарами / сканирование
 # =========================
 async def _product_cells(session: AsyncSession, warehouse_id: str) -> List[Tuple[int, int]]:
-    q = (
-        select(distinct(Product.current_row), Product.current_shelf)
-        .where(Product.warehouse_id == warehouse_id)
-    )
+    q = select(distinct(Product.current_row), Product.current_shelf).where(Product.warehouse_id == warehouse_id)
     rows = await session.execute(q)
     cells: List[Tuple[int, int]] = []
     for r, shelf_str in rows.all():
@@ -327,10 +263,7 @@ async def _last_scans_map(session: AsyncSession, warehouse_id: str) -> Dict[str,
         return cached[1]
 
     q = (
-        select(
-            InventoryHistory.product_id,
-            func.max(InventoryHistory.created_at)
-        )
+        select(InventoryHistory.product_id, func.max(InventoryHistory.created_at))
         .where(InventoryHistory.warehouse_id == warehouse_id)
         .group_by(InventoryHistory.product_id)
     )
@@ -348,7 +281,6 @@ async def _eligible_products_for_scan(
     cutoff: datetime,
 ) -> List[Product]:
     shelf_letter = shelf_num_to_str(y)
-
     q = (
         select(Product)
         .where(
@@ -363,11 +295,7 @@ async def _eligible_products_for_scan(
         return []
 
     last_map = await _last_scans_map(session, warehouse_id)
-    eligible: List[Product] = [
-        p for p in products
-        if (last_map.get(p.id) is None) or (last_map[p.id] < cutoff)
-    ]
-    return eligible
+    return [p for p in products if (last_map.get(p.id) is None) or (last_map[p.id] < cutoff)]
 
 
 async def _begin_scan(session: AsyncSession, robot: Robot, x: int, y: int) -> None:
@@ -379,7 +307,7 @@ async def _begin_scan(session: AsyncSession, robot: Robot, x: int, y: int) -> No
         _SCANNING_UNTIL[robot.id] = datetime.now(timezone.utc) + SCAN_DURATION
 
     if EMIT_POSITION_PER_ROBOT:
-        _emit_position(robot.warehouse_id, robot.id, x, y, robot.status, float(robot.battery_level or 0.0))
+        await _emit_position(robot.warehouse_id, robot.id, x, y, robot.status, float(robot.battery_level or 0.0))
 
 
 async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
@@ -400,10 +328,7 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
     if products:
         cutoff = datetime.now(timezone.utc) - RESCAN_COOLDOWN
         last_map = await _last_scans_map(session, robot.warehouse_id)
-        products = [
-            p for p in products
-            if (last_map.get(p.id) is None) or (last_map[p.id] < cutoff)
-        ]
+        products = [p for p in products if (last_map.get(p.id) is None) or (last_map[p.id] < cutoff)]
 
     if not products:
         _free_claim(robot.warehouse_id, (rx, ry))
@@ -459,7 +384,7 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
     with session.no_autoflush:
         session.add_all(history_rows)
 
-    _emit({
+    await _emit({
         "type": "product.scan",
         "warehouse_id": robot.warehouse_id,
         "robot_id": robot.id,
@@ -488,7 +413,6 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
 
 def _drop_per_step_for_field(max_x: int, max_y: int) -> float:
     steps_for_pass = max(1, max_x + max_y)
-    # делаем поле «экономнее» — примерно в 2 раза ниже базовый расход
     drop = 100.0 / (steps_for_pass * 2.0)
     return max(MIN_BATT_DROP_PER_STEP, drop)
 
@@ -517,7 +441,7 @@ def _claim(warehouse_id: str, target: Tuple[int, int]) -> None:
 
 def _is_claimed(warehouse_id: str, target: Tuple[int, int]) -> bool:
     with _LOCK_TARGETS:
-        return target in _claimed_set(warehouse_id)
+        return target in _CLAIMED_TARGETS.get(warehouse_id, set())
 
 
 def _pick_goal(
@@ -528,10 +452,10 @@ def _pick_goal(
     max_y: int,
 ) -> Tuple[int, int]:
     if candidates:
-        best_d = None
+        best_d: Optional[int] = None
         bucket: List[Tuple[int, int]] = []
         with _LOCK_TARGETS:
-            claimed = _claimed_set(warehouse_id)
+            claimed = _CLAIMED_TARGETS.setdefault(warehouse_id, set())
             for c in candidates:
                 if c in claimed:
                     continue
@@ -545,13 +469,13 @@ def _pick_goal(
                 claimed.add(goal)
                 return goal
 
-    # если кандидатов нет — ранний фолбэк к случайной свободной клетке
+    # fallback — случайная свободная клетка
     for _ in range(50):
         gx = random.randint(0, max_x)
         gy = random.randint(1, max_y)
         goal = (gx, gy)
         with _LOCK_TARGETS:
-            claimed = _claimed_set(warehouse_id)
+            claimed = _CLAIMED_TARGETS.setdefault(warehouse_id, set())
             if goal != start and goal not in claimed:
                 claimed.add(goal)
                 return goal
@@ -559,29 +483,22 @@ def _pick_goal(
     return start
 
 # =========================
-# Отправка событий (неблокирующая + антидубль, с разделением очередей)
+# Отправка событий (через Redis шину)
 # =========================
 
-def _emit(evt: dict) -> None:
-    """Кладём событие в соответствующую janus-очередь: ROBOT или COMMON, с вытеснением старого при переполнении."""
-    q = EVENTS_ROBOT if evt.get("type") in ROBOT_EVENT_TYPES else EVENTS_COMMON
-    try:
-        q.sync_q.put_nowait(evt)  # janus: синхронная сторона
-    except queue.Full:
-        # при переполнении — выбрасываем старый элемент ЭТОЙ ЖЕ очереди (не трогаем другую)
-        try:
-            q.sync_q.get_nowait()
-        except Exception:
-            pass
-        try:
-            q.sync_q.put_nowait(evt)
-        except Exception:
-            pass
-    except Exception:
-        pass
+async def _emit(evt: dict) -> None:
+    """
+    Публикуем событие в Redis-канал:
+    - 'ws:robot' для частой телеметрии (position/scan),
+    - 'ws:common' для остального.
+    """
+    evt_type = (evt.get("type") or "").lower()
+    channel = ROBOT_CH if evt_type in ROBOT_EVENT_TYPES else COMMON_CH
+    bus = await get_bus_for_current_loop()
+    await bus.publish(channel, evt)
 
 
-def _emit_position(warehouse_id: str, robot_id: str, x: int, y: int, status: str, battery_level: float) -> None:
+async def _emit_position(warehouse_id: str, robot_id: str, x: int, y: int, status: str, battery_level: float) -> None:
     # коалесинг по состоянию
     batt_int = int(round(battery_level))
     key = (x, y, status or "idle", batt_int)
@@ -597,7 +514,8 @@ def _emit_position(warehouse_id: str, robot_id: str, x: int, y: int, status: str
     _LAST_POSITION_SENT_AT[warehouse_id] = now
 
     _LAST_EMITTED_STATE[robot_id] = key
-    _emit({
+    bus = await get_bus_for_current_loop()
+    await bus.publish(ROBOT_CH, {
         "type": "robot.position",
         "warehouse_id": warehouse_id,
         "robot_id": robot_id,
@@ -660,7 +578,7 @@ async def _move_robot_once_impl(session: AsyncSession, robot_id: str, interval: 
             _CHARGE_ACCUM.pop(robot.id, None)
 
         if EMIT_POSITION_PER_ROBOT:
-            _emit_position(
+            await _emit_position(
                 robot.warehouse_id,
                 robot.id,
                 int(robot.current_row or 0),
@@ -681,10 +599,8 @@ async def _move_robot_once_impl(session: AsyncSession, robot_id: str, interval: 
 
         cells = await _product_cells_cached(session, robot.warehouse_id)
         if cells:
-            # обычная логика — целимся в ближайшую клетку с товарами, избегая конфликтов
             goal = _pick_goal(robot.warehouse_id, cur, cells, max_x, max_y)
         else:
-            # «бродим» по соседним клеткам без бронирования, если нечего сканировать
             goal = _random_wander_target(cur, max_x, max_y)
 
         with _LOCK_TARGETS:
@@ -706,7 +622,7 @@ async def _move_robot_once_impl(session: AsyncSession, robot_id: str, interval: 
         _touch_robot(robot)
         await _log_status_every_tick(session, robot)
         if EMIT_POSITION_PER_ROBOT:
-            _emit_position(
+            await _emit_position(
                 robot.warehouse_id,
                 robot.id,
                 int(robot.current_row or 0),
@@ -725,7 +641,7 @@ async def _move_robot_once_impl(session: AsyncSession, robot_id: str, interval: 
     await _log_status_every_tick(session, robot)
 
     if EMIT_POSITION_PER_ROBOT:
-        _emit_position(robot.warehouse_id, robot.id, nx, ny, robot.status, float(robot.battery_level or 0.0))
+        await _emit_position(robot.warehouse_id, robot.id, nx, ny, robot.status, float(robot.battery_level or 0.0))
 
     # если пришли в цель — запускаем скан или сбрасываем цель
     if (nx, ny) == goal:
@@ -753,7 +669,6 @@ class WarehouseRunner:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._session_factory: Optional[async_sessionmaker[AsyncSession]] = None
         self._engine: Optional[AsyncEngine] = None
-        # очередь корутин (а не callables с ensure_future) — далее runner их AWAIT-ит
         self._queue: Optional[asyncio.Queue[Optional[Callable[[], Awaitable[None]]]]] = None
         self._started = threading.Event()
         self._stopped = False
@@ -767,7 +682,6 @@ class WarehouseRunner:
         if not self._loop:
             return
         self._stopped = True
-        # кладём sentry None и ждём остановку цикла
         fut = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
         fut.result(timeout=10)
         self._thread.join(timeout=10)
@@ -775,7 +689,6 @@ class WarehouseRunner:
     async def _shutdown(self):
         assert self._queue is not None
         await self._queue.put(None)
-        # остановка цикла произойдёт в _thread_main после выхода runner()
 
     def submit_tick(self, interval: float) -> None:
         if not self._loop or not self._queue:
@@ -784,7 +697,6 @@ class WarehouseRunner:
         async def job():
             await self._run_one_tick(interval)
 
-        # складываем КОРУТИНУ, а не запускаем её тут
         asyncio.run_coroutine_threadsafe(self._queue.put(job), self._loop)
 
     def _thread_main(self):
@@ -793,7 +705,7 @@ class WarehouseRunner:
         self._loop = loop
         self._queue = asyncio.Queue()
 
-        # ВАЖНО: создаём СВОЙ engine/sessionmaker для этого event loop
+        # свой engine/sessionmaker для этого event loop
         self._session_factory, self._engine = _session_factory_for_current_loop()
 
         self._sema = asyncio.Semaphore(_MAX_CONCURRENT_ROBOTS_PER_WAREHOUSE)
@@ -806,7 +718,6 @@ class WarehouseRunner:
                     if maker is None:
                         break
                     try:
-                        # теперь мы ЖДЁМ выполнение задачи, а не плодим ensure_future
                         await maker()
                     except Exception as e:
                         print(f"⚠️ WarehouseRunner({self.warehouse_id}) job error: {e}", flush=True)
@@ -824,25 +735,23 @@ class WarehouseRunner:
                 loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                 if self._engine is not None:
                     loop.run_until_complete(self._engine.dispose())
+                # аккуратно закрыть Redis-клиента, привязанного к этому loop
+                loop.run_until_complete(close_bus_for_current_loop())
             finally:
                 loop.close()
 
     async def _janitor(self) -> None:
-        """Периодический клининг: чистим глобальные словари и ограничиваем рост таблиц."""
         now = datetime.now(timezone.utc)
-        # расписание
         next_at = _WAREHOUSE_NEXT_JANITOR_AT.get(self.warehouse_id, datetime.fromtimestamp(0, tz=timezone.utc))
         if now < next_at:
             return
         _WAREHOUSE_NEXT_JANITOR_AT[self.warehouse_id] = now + WAREHOUSE_JANITOR_EVERY
 
-        # 1) выясняем активные роботы этого склада
         assert self._session_factory is not None
         async with self._session_factory() as session:
             result = await session.execute(select(Robot.id).where(Robot.warehouse_id == self.warehouse_id))
             active_robot_ids = set(result.scalars().all())
 
-        # 2) чистим глобальные структуры от «мертвых» роботов
         def _prune(mapping: Dict[str, object]):
             dead = [rid for rid in list(mapping.keys()) if rid not in active_robot_ids]
             for rid in dead:
@@ -859,12 +768,10 @@ class WarehouseRunner:
         _prune(_LAST_LOGGED_STATE)   # type: ignore[arg-type]
         _prune(_LAST_HISTORY_AT)     # type: ignore[arg-type]
 
-        # 3) подчищаем историю инвентаризации по чуть-чуть
         cutoff = now - INVENTORY_HISTORY_RETENTION
         try:
             async with self._session_factory() as s:
                 async with s.begin():
-                    # dialect-agnostic delete with LIMIT: выбираем id батчем и удаляем по IN
                     ids_stmt = (
                         select(InventoryHistory.id)
                         .where(
@@ -886,7 +793,6 @@ class WarehouseRunner:
             result = await session.execute(select(Robot.id).where(Robot.warehouse_id == self.warehouse_id))
             robot_ids = list(result.scalars().all())
         if not robot_ids:
-            # даже если роботов нет — запускаем периодический клининг
             await self._janitor()
             return
 
@@ -915,19 +821,50 @@ class WarehouseRunner:
                     "battery_level": int(round(float(r.battery_level or 0.0))),
                     "status": (r.status or "idle"),
                 })
-            _emit({
+            await _emit({
                 "type": "robot.position",
                 "warehouse_id": self.warehouse_id,
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "robots": batch,
             })
 
-        # периодический клининг после выполнения тика
         await self._janitor()
 
 # =========================
 # Вотчер
 # =========================
+
+def _try_acquire_process_lock(lock_path: Optional[str]) -> bool:
+    global _LOCK_FILE_HANDLE
+    if not lock_path or fcntl is None:
+        return True
+    try:
+        fh = open(lock_path, "w")
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fh.write(f"pid={os.getpid()} time={datetime.now(timezone.utc).isoformat()}\n")
+        fh.flush()
+        _LOCK_FILE_HANDLE = fh
+        return True
+    except BlockingIOError:
+        return False
+    except Exception:
+        return True
+
+
+def _release_process_lock():
+    global _LOCK_FILE_HANDLE
+    if _LOCK_FILE_HANDLE is None:
+        return
+    try:
+        if fcntl is not None:
+            fcntl.flock(_LOCK_FILE_HANDLE, fcntl.LOCK_UN)
+    finally:
+        try:
+            _LOCK_FILE_HANDLE.close()
+        except Exception:
+            pass
+        _LOCK_FILE_HANDLE = None
+
 
 async def run_robot_watcher(
     interval: float = 2,
@@ -938,10 +875,9 @@ async def run_robot_watcher(
 ) -> None:
     """
     - Для каждого активного склада поднимается постоянный воркер-поток со своим loop.
-    - В каждом воркере СОБСТВЕННЫЙ AsyncEngine/Session, привязанные к его loop
-      (исправляет 'Future attached to a different loop').
-    - Защита от роста памяти: ограниченная очередь событий + периодический janitor.
-    - События маршрутизируются в отдельные janus-очереди (COMMON/ROBOT), чтобы телеметрия не блокировала прочие WS.
+    - В каждом воркере СВОЙ AsyncEngine/Session.
+    - Публикации событий идут в Redis-каналы (ROBOT_CH/COMMON_CH) через bus, привязанный к текущему loop’у.
+    - Память стабилизируется за счёт janitor-ов и коалесинга/рателимита событий.
     """
     global _WATCHER_RUNNING
 
@@ -953,14 +889,6 @@ async def run_robot_watcher(
         if not _try_acquire_process_lock(singleton_lock_path):
             print(f"ℹ️ Robot watcher: another instance holds lock {singleton_lock_path!r}. Skipping start.", flush=True)
             return
-
-    # гарантируем ограниченные очереди (janus уже ограничены в ws_manager),
-    # здесь лишь информативный лог размеров:
-    try:
-        print(f"ℹ️ Queues: common_max={getattr(EVENTS_COMMON.sync_q, 'maxsize', '?')}, "
-              f"robot_max={getattr(EVENTS_ROBOT.sync_q, 'maxsize', '?')}", flush=True)
-    except Exception:
-        pass
 
     _WATCHER_RUNNING = True
 
@@ -990,7 +918,6 @@ async def run_robot_watcher(
                 if wid not in active_ids:
                     runners[wid].stop()
                     del runners[wid]
-                    # также подчистим кэши и claimed по складу
                     with _LOCK_TARGETS:
                         _CLAIMED_TARGETS.pop(wid, None)
                     _PRODUCT_CELLS_CACHE.pop(wid, None)

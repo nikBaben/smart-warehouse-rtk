@@ -1,36 +1,25 @@
+# app/ws/products_events.py
 from __future__ import annotations
 from typing import Optional, List, Dict, Any
+
 import asyncio
-import queue
-from sqlalchemy import select
+from sqlalchemy import select, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# ✅ используем разделённые очереди
-from app.ws.ws_manager import EVENTS_COMMON, manager
+# ✅ вместо синглтона bus используем фабрику под текущий event loop
+from app.events.bus import get_bus_for_current_loop, COMMON_CH
+from app.db.session import async_session
 from app.models.product import Product
-from app.db.session import async_session  # для стримера (фоновой задачи)
 
-
-def _safe_put_common(event: Dict[str, Any]) -> None:
-    """
-    Кладём событие в 'общую' janus-очередь без блокировок.
-    При переполнении вытесняем самый старый элемент этой же очереди.
-    """
-    q = EVENTS_COMMON.sync_q
-    try:
-        q.put_nowait(event)
-    except queue.Full:
-        try:
-            q.get_nowait()
-        except Exception:
-            pass
-        try:
-            q.put_nowait(event)
-        except Exception:
-            pass
+# Менеджер комнат (есть только в API-процессе)
+try:
+    from app.ws.ws_manager import manager
+except Exception:
+    manager = None  # type: ignore
 
 
 def _pack_product(p: Product) -> dict:
+    created_at = getattr(p, "created_at", None)
     return {
         "id": p.id,
         "name": p.name,
@@ -42,55 +31,96 @@ def _pack_product(p: Product) -> dict:
         "stock": getattr(p, "stock", None),
         "min_stock": getattr(p, "min_stock", None),
         "optimal_stock": getattr(p, "optimal_stock", None),
-        "created_at": getattr(p, "created_at", None).isoformat() if getattr(p, "created_at", None) else None,
+        "created_at": created_at.isoformat() if created_at else None,
     }
 
 
-# Полный снимок товаров склада — отправляем при подключении клиента И/ИЛИ периодически.
+# ---------- публикации ----------
+
 async def publish_product_snapshot(session: AsyncSession, warehouse_id: str) -> None:
     rows = await session.execute(select(Product).where(Product.warehouse_id == warehouse_id))
     items = [_pack_product(p) for p in rows.scalars().all()]
-    _safe_put_common({
+    bus = await get_bus_for_current_loop()
+    await bus.publish(COMMON_CH, {
         "type": "product.snapshot",
         "warehouse_id": warehouse_id,
         "items": items,
     })
 
 
-# Дельта-событие об изменении товара (create/update/move/stock-change).
 async def publish_product_change(session: AsyncSession, product_id: str) -> None:
     row = await session.execute(select(Product).where(Product.id == product_id))
     p: Optional[Product] = row.scalar_one_or_none()
     if not p:
         return
-    _safe_put_common({
+    bus = await get_bus_for_current_loop()
+    await bus.publish(COMMON_CH, {
         "type": "product.changed",
         "warehouse_id": p.warehouse_id,
         "item": _pack_product(p),
     })
 
 
-# Удаление товара.
-def publish_product_deleted(product_id: str, warehouse_id: str) -> None:
-    _safe_put_common({
+async def publish_product_deleted(product_id: str, warehouse_id: str) -> None:
+    bus = await get_bus_for_current_loop()
+    await bus.publish(COMMON_CH, {
         "type": "product.deleted",
         "warehouse_id": warehouse_id,
         "product_id": product_id,
     })
 
 
-# “Постоянная” отправка снапшота.
-# Периодически (каждые `interval` секунд) рассылает актуальный snapshot товаров
-# для КАЖДОГО склада, на который сейчас есть хотя бы один подписчик (WS-клиент).
-# Запусти это как фон-таск наряду с robot_events_broadcaster().
-async def continuous_product_snapshot_streamer(interval: float = 2.0) -> None:
+# ---------- выбор активных складов ----------
+
+async def _get_active_warehouses_by_ws() -> List[str]:
+    """Список складов с активными WS-подписчиками (API-режим)."""
+    if manager is None:
+        return []
+    try:
+        rooms = await manager.list_rooms()
+        return rooms or []
+    except Exception:
+        return []
+
+async def _get_active_warehouses_by_db(session: AsyncSession) -> List[str]:
+    """Список складов, по которым есть товары (worker-режим)."""
+    rows = await session.execute(select(distinct(Product.warehouse_id)))
+    return [wid for (wid,) in rows.all() if wid]
+
+
+# ---------- периодический стример ----------
+
+async def continuous_product_snapshot_streamer(
+    interval: float = 10.0,
+    use_ws_rooms: bool = False,
+) -> None:
+    """
+    Каждые `interval` секунд публикует актуальный snapshot товаров.
+    use_ws_rooms=True  → брать только комнаты с активными WS-подписчиками (API-процесс).
+    use_ws_rooms=False → брать склады из БД (worker-процесс).
+    """
+    print(f"🚀 continuous_product_snapshot_streamer(interval={interval}, use_ws_rooms={use_ws_rooms})")
     try:
         while True:
-            rooms = await manager.list_rooms()
-            if rooms:
-                async with async_session() as session:
-                    for warehouse_id in rooms:
-                        await publish_product_snapshot(session, warehouse_id)
+            try:
+                if use_ws_rooms:
+                    wh_ids = await _get_active_warehouses_by_ws()
+                    if not wh_ids:
+                        await asyncio.sleep(interval)
+                        continue
+                    async with async_session() as session:
+                        for warehouse_id in wh_ids:
+                            await publish_product_snapshot(session, warehouse_id)
+                else:
+                    async with async_session() as session:
+                        wh_ids = await _get_active_warehouses_by_db(session)
+                        for warehouse_id in wh_ids:
+                            await publish_product_snapshot(session, warehouse_id)
+            except Exception as inner_err:
+                print(f"❌ continuous_product_snapshot_streamer inner error: {inner_err}")
+
             await asyncio.sleep(interval)
     except asyncio.CancelledError:
-        pass
+        print("🛑 continuous_product_snapshot_streamer cancelled")
+    except Exception as e:
+        print(f"🔥 continuous_product_snapshot_streamer fatal error: {e}")

@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5433:5432"   # внешний порт 5433 → внутренний 5432 (для подключения с хоста)
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -16,30 +16,72 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:7
+    container_name: myapp-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # --- API-процесс: только HTTP/WS, без фоновых задач ---
   api:
-    build: .                
+    build: .
     container_name: myapp-api
     working_dir: /app
     env_file:
-      - .env                  
+      - .env
     environment:
-      # ПЕРЕОПРЕДЕЛЯЕМ только адрес БД для контейнера:
-      # важно: host = db, порт = 5432 (внутренний порт сервиса Postgres)
-      DB_URL: postgresql+asyncpg://postgres:postgres@db:5432/myapp
+      # единое имя для вашего кода
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/myapp
+      # роль и редис
+      APP_ROLE: api
+      USE_REDIS: "1"
+      REDIS_DSN: redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy
       keycloak:
         condition: service_started
+      redis:
+        condition: service_healthy
     ports:
-      - "8000:8000"  
+      - "8000:8000"
     expose:
-      - "8000"                 # доступно только внутри docker-сети
+      - "8000"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
     volumes:
       - ./:/app
       - ./tools/websocat:/usr/local/bin/websocat:ro
-  
+
+  # --- WORKER-процесс: эмулятор + все стримеры ---
+  worker:
+    build: .
+    container_name: myapp-worker
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/myapp
+      REDIS_DSN: redis://redis:6379/0
+      # тонкий пул для воркера, чтобы не душить API
+      ROBOT_POOL_SIZE: "8"
+      ROBOT_MAX_OVERFLOW: "16"
+      ROBOT_POOL_TIMEOUT: "30.0"
+      # (опционально) ограничим параллелизм роботов на склад
+      ROBOT_CONCURRENCY: "4"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m app.workers.runner
+    volumes:
+      - ./:/app
+
   # --- База данных для Keycloak ---
   keycloak-db:
     image: postgres:15-alpine
@@ -49,7 +91,7 @@ services:
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD: keycloak
     ports:
-      - "5432:5432" 
+      - "5432:5432"
     volumes:
       - keycloak_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -94,7 +136,6 @@ services:
       - caddy_config:/config
     depends_on:
       - api
-
 
 volumes:
   pgdata:
