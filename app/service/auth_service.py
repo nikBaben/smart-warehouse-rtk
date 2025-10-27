@@ -29,6 +29,7 @@ class AuthService:
                 kkid=kkid,
                 email=email,
                 user_info=user_info
+                password=password
             )
             
             # Формируем ответ

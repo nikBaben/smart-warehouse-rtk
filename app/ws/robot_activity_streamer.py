@@ -200,7 +200,7 @@ async def publish_robot_activity_series_from_history(
     })
 
 # === фоновая задача ===
-async def continuous_robot_activity_history_streamer(interval: float = 30.0) -> None:
+async def continuous_robot_activity_history_streamer(interval: float = 600) -> None:
     """
     Каждые interval секунд публикует 7 последних 10-минутных точек активности
     для всех складов, на которые есть WS-подписчики.

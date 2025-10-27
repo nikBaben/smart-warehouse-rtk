@@ -3,13 +3,14 @@ from fastapi import HTTPException
 from app.schemas.user import UserCreate, UserResponse
 from app.repositories.user_repo import UserRepository
 from app.repositories.kkid_user_repo import KkidUserRepository
+from app.core.security import get_password_hash
 
 class UserService:
     def __init__(self, session: AsyncSession):
         self.user_repo = UserRepository(session)
         self.kkid_user_repo = KkidUserRepository(session)
 
-    async def get_or_create_user_from_keycloak(self, kkid: str, email: str, user_info: dict):
+    async def get_or_create_user_from_keycloak(self, kkid: str, email: str, user_info: dict, password: str):
         """Получаем или создаем пользователя на основе данных из Keycloak"""
         # Пытаемся найти пользователя по Keycloak ID
         user = await self.user_repo.get_by_kkid(kkid)
@@ -27,7 +28,7 @@ class UserService:
                     email=email,
                     name=user_info.get('name', user_info.get('preferred_username', email)),
                     role=user_role,
-                    password="keycloak_authenticated"  # пароль не используется при Keycloak аутентификации
+                    password_hash=get_password_hash(password)  # пароль не используется при Keycloak аутентификации
                 )
                 user = await self.user_repo.create(user_create)
                 print(f"✅ Created new user: {user.id}, email: {user.email}")
