@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, status, Body
-from app.schemas.inventory_history import InventoryHistoryRead, InventoryHistoryFilters, FilteredInventoryHistoryResponse
+from fastapi import APIRouter, Depends, status, Body, Response
+from app.schemas.inventory_history import InventoryHistoryRead, InventoryHistoryFilters, FilteredInventoryHistoryResponse, InventoryHistoryExport
 from app.service.inventory_history_service import InventoryHistoryService
 from app.api.deps import get_inventory_history_service  
+
+from io import BytesIO
+import datetime
 
 router = APIRouter(prefix="/inventory_history", tags=["inventory_history"])
 
@@ -55,7 +58,46 @@ async def get_filtered_inventory_history(
         page=page,
         page_size=page_size
     )
-    
+
     return FilteredInventoryHistoryResponse(
         data=inventory_history,
+    )
+
+
+@router.post(
+    "/inventory_history_export_to_xl/{warehouse_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Получить отфильтрованную историю инвентаризации",
+    description="""
+    Универсальный endpoint для фильтрации истории инвентаризации.
+    """
+)
+async def inventory_history_export_to_xl(
+    warehouse_id: str,
+    record_ids: InventoryHistoryExport = Body(...),
+    service: InventoryHistoryService = Depends(get_inventory_history_service),
+):
+    record_ids_list = record_ids.record_ids
+    
+    xl: BytesIO = await service.inventory_history_export_to_xl(
+        warehouse_id=warehouse_id,
+        record_ids=record_ids_list
+    )
+
+    file_size = len(xl.getvalue())
+    
+    # Создаем имя файла с timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"inventory_{warehouse_id}_{timestamp}.xlsx"
+
+    return Response(
+        content=xl.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{filename}\"",
+            "Content-Length": str(file_size),
+            "Cache-Control": "no-cache",
+            "X-File-Size": str(file_size),
+            "X-File-Name": filename
+        }
     )

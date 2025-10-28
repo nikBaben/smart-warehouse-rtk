@@ -4,6 +4,9 @@ from sqlalchemy import select, cast, Date, or_
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
+from io import BytesIO
+import pandas as pd
+import xlsxwriter
 
 from app.models.inventory_history import InventoryHistory
 
@@ -39,15 +42,15 @@ class InventoryHistoryRepository:
         )
         
         if zone_filter := filters.get('zone_filter'):
-            query = query.filter(InventoryHistory.current_zone == zone_filter)
+            query = query.filter(InventoryHistory.current_zone.in_(zone_filter))
         
         # Фильтр по категории
         if category_filter := filters.get('category_filter'):
-            query = query.filter(InventoryHistory.category == category_filter)
+            query = query.filter(InventoryHistory.category.in_(category_filter))
         
         # Фильтр по статусу
         if status_filter := filters.get('status_filter'):
-            query = query.filter(InventoryHistory.status == status_filter)
+            query = query.filter(InventoryHistory.status.in_(status_filter))
 
         date_from = filters.get('date_from')
         date_to = filters.get('date_to')
@@ -104,3 +107,61 @@ class InventoryHistoryRepository:
 
         result = await self.session.execute(query)
         return list(result.scalars().all())
+    
+    async def inventory_history_export_to_xl(
+        self,
+        warehouse_id: str,
+        record_ids: List[str]  
+        ) -> BytesIO:
+
+        query = select(InventoryHistory).filter(
+        InventoryHistory.warehouse_id == warehouse_id,
+        InventoryHistory.id.in_(record_ids)
+        )
+    
+        result = await self.session.execute(query)
+        data = list(result.scalars().all())
+
+        # Преобразуем данные в список словарей
+        data_list = []
+        for item in data:
+            data_list.append({
+                'Дата и время проверки': item.created_at,
+                'ID робота': item.robot_id,
+                'Зона': item.current_zone,
+                'Артикул': item.article,
+                'Название': item.name,
+                'Категория': item.category,
+                'Статус': item.status,
+                'Количество': item.stock,
+                'Склад': item.warehouse_id
+            })
+
+        # Создаем DataFrame и Excel файл
+        df = pd.DataFrame(data_list)
+        df['Дата и время проверки'] = df['Дата и время проверки'].dt.tz_localize(None)
+        output = BytesIO()
+
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='История инвентаря', index=False)
+            
+            # Форматирование
+            workbook = writer.book
+            worksheet = writer.sheets['История инвентаря']
+            
+            header_format = workbook.add_format({
+                'bold': True,
+                'fg_color': '#D7E4BC',
+                'border': 1
+            })
+            
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+            
+            # Авто-ширина колонок
+            for i, col in enumerate(df.columns):
+                max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+                worksheet.set_column(i, i, min(max_len, 50))
+
+        output.seek(0)
+        return output
