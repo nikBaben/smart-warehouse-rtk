@@ -26,7 +26,8 @@ BUCKET_SEC = 600  # 10 минут
 WINDOW_MIN = POINTS_COUNT * (BUCKET_SEC // 60)  # 70 минут
 
 # --- внутреннее состояние ---
-_last_bucket_sent: Dict[str, datetime] = {}  # warehouse_id -> last emitted bucket_end (UTC)
+_last_bucket_sent: Dict[str, datetime] = {}         # дедупликация по бакету «сейчас»
+_next_allowed_emit: Dict[str, datetime] = {}        # ЖЁСТКАЯ пауза ≥10 минут от последней отправки (якорится на первом снапшоте)
 
 # === служебные утилиты ===
 def _ensure_utc(ts: datetime) -> datetime:
@@ -149,25 +150,31 @@ async def publish_robot_activity_series_from_history(
     force: bool = False,
 ) -> None:
     """
-    Публикуем РОВНО 7 точек по 10 минут, считая активность на конец текущего бакета.
-    Важное: дедупликация и ось времени считаются от 'now', а не от last_ts.
+    Публикуем 7 точек по 10 минут, считая активность на конец текущего бакета.
+    Правило частоты: не чаще 1 раза в 10 минут С МОМЕНТА ПОСЛЕДНЕЙ ОТПРАВКИ (якорь — первый снапшот при подключении).
     """
-    # last_ts нам нужен только как «до какого момента есть события»
-    last_ts = await _latest_history_timestamp(session, warehouse_id)
     bus = await get_bus_for_current_loop()
-
-    # Текущий край бакета (гарантирует публикации строго каждые 10 минут)
     now_srv = datetime.now(timezone.utc)
+
+    # --- ГЛАВНОЕ: ограничение частоты относительно последнего отправленного сообщения ---
+    next_allowed = _next_allowed_emit.get(warehouse_id)
+    if not force and next_allowed is not None and now_srv < next_allowed:
+        # ранний вызов (например, воркер или событие истории) — пропускаем
+        return
+
+    # текущий край бакета для построения оси
     bucket_end = _bucket_end_of(now_srv, BUCKET_SEC)
 
-    # если уже отправляли этот бакет — не публикуем повторно
+    # Доп. защита от дублей в один и тот же бакет (если вызовов несколько одновременно)
     if not force and _last_bucket_sent.get(warehouse_id) == bucket_end:
         return
 
-    # Формируем ось ИМЕННО до текущего края бакета
+    # Ось времени до текущего края бакета
     axis = _axis_from_last(now_srv, POINTS_COUNT, BUCKET_SEC)
     start, end = axis[0], axis[-1]
 
+    # Собираем данные истории
+    last_ts = await _latest_history_timestamp(session, warehouse_id)
     if last_ts is None:
         series = [(t.isoformat(), 0.0) for t in axis]
         await bus.publish(COMMON_CH, {
@@ -176,10 +183,11 @@ async def publish_robot_activity_series_from_history(
             "window_min": WINDOW_MIN,
             "bucket_sec": BUCKET_SEC,
             "series": series,
-            "ts": end.isoformat(),          # метка времени = конец текущего бакета
+            "ts": end.isoformat(),      # метка = конец текущего бакета
             "total_robots": 0,
         })
         _last_bucket_sent[warehouse_id] = bucket_end
+        _next_allowed_emit[warehouse_id] = now_srv + timedelta(seconds=BUCKET_SEC)
         return
 
     total = await _total_robots(session, warehouse_id)
@@ -192,11 +200,14 @@ async def publish_robot_activity_series_from_history(
         "warehouse_id": warehouse_id,
         "window_min": WINDOW_MIN,
         "bucket_sec": BUCKET_SEC,
-        "series": series,                  # длина = 7
-        "ts": end.isoformat(),             # «текущее» время — конец текущего бакета
+        "series": series,              # длина = 7
+        "ts": end.isoformat(),         # «текущее» время — конец текущего бакета
         "total_robots": total,
     })
+
+    # фиксируем последний отправленный бакет и следующий разрешённый момент
     _last_bucket_sent[warehouse_id] = bucket_end
+    _next_allowed_emit[warehouse_id] = now_srv + timedelta(seconds=BUCKET_SEC)
 
 
 # === выбор активных складов ===
@@ -217,7 +228,7 @@ async def _get_active_warehouses_by_db(session: AsyncSession) -> List[str]:
     return [wid for (wid,) in rows.all() if wid]
 
 
-# === вспомогательная задержка до следующего края бакета ===
+# === вспомогательная задержка до следующего края бакета (для красивой оси, но частоту диктует _next_allowed_emit) ===
 async def _sleep_until_next_bucket() -> None:
     now = datetime.now(timezone.utc)
     next_edge = _floor(now, BUCKET_SEC) + timedelta(seconds=BUCKET_SEC)
@@ -230,12 +241,11 @@ async def continuous_robot_activity_history_streamer(
     use_ws_rooms: bool = False,
 ) -> None:
     """
-    Публикует 7 последних 10-минутных точек активности, строго по краям бакетов.
-    interval игнорируется как таймер сна; выравниваемся на реальные края через _sleep_until_next_bucket().
+    Публикует 7 последних 10-минутных точек активности.
+    Выравниваемся по бакетам для оси, а ЧАСТОТА РЕАЛЬНЫХ ОТПРАВОК контролируется _next_allowed_emit.
     """
     print(f"🚀 continuous_robot_activity_history_streamer(interval={interval}, use_ws_rooms={use_ws_rooms})")
     try:
-        # выравниваемся на ближайший «край» бакета перед стартом цикла
         await _sleep_until_next_bucket()
         while True:
             try:
@@ -254,7 +264,7 @@ async def continuous_robot_activity_history_streamer(
                             await publish_robot_activity_series_from_history(session, wh)
             except Exception as inner_err:
                 print(f"❌ continuous_robot_activity_history_streamer inner error: {inner_err}")
-            # спим РОВНО до следующего края бакета
+            # следующий тик — на край бакета (для ровной оси); реальная отправка может быть подавлена квотой
             await _sleep_until_next_bucket()
     except asyncio.CancelledError:
         print("🛑 continuous_robot_activity_history_streamer cancelled")
@@ -266,12 +276,11 @@ async def continuous_robot_activity_history_streamer(
 async def publish_robot_activity_on_history_event(session: AsyncSession, history_id: str) -> None:
     """
     Вызывается при записи нового события RobotHistory.
-    Публикации «внутри» бакета не будет — она произойдёт на следующем крае.
+    Публикации «внутри» 10-минутного окна после последней отправки не будет — сработает по достижении окна.
     """
     row = await session.execute(
         select(RobotHistory.warehouse_id).where(RobotHistory.id == history_id)
     )
     wh: Optional[str] = row.scalar_one_or_none()
     if wh:
-        # force=False: дедупликация по текущему бакету не даст публиковать чаще 1 раза в 10 минут
         await publish_robot_activity_series_from_history(session, wh)
