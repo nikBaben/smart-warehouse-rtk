@@ -24,6 +24,8 @@ class EventBus:
                 self._dsn,
                 encoding="utf-8",
                 decode_responses=True,
+                health_check_interval=30,   # <--- добавляем это
+                retry_on_timeout=True,
             )
 
     async def publish(self, channel: str, payload: dict) -> None:

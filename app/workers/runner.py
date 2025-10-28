@@ -23,7 +23,7 @@ from app.ws.robot_status_count_streamer import continuous_robot_status_count_str
 from app.ws.robot_activity_streamer import continuous_robot_activity_history_streamer
 
 
-REDIS_DSN = os.getenv("REDIS_DSN", "redis://localhost:6379/0")
+REDIS_DSN = os.getenv("REDIS_DSN", "redis://myapp-redis:6379/0")
 WATCHER_INTERVAL = float(os.getenv("WATCHER_INTERVAL", "2"))
 
 

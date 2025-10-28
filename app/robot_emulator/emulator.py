@@ -26,7 +26,7 @@ from app.models.product import Product
 from app.models.inventory_history import InventoryHistory
 from app.service.robot_history import write_robot_status_event  # лог статусов
 
-# Шина событий (Redis) — фабрики bus на текущий loop
+# Шина событий (Redis) — фабрики bus на текущем loop
 from app.events.bus import (
     get_bus_for_current_loop,
     close_bus_for_current_loop,
@@ -171,6 +171,10 @@ def _session_factory_main() -> async_sessionmaker[AsyncSession]:
 
 
 def _resolve_db_url() -> str:
+    """
+    Пытаемся взять URL БД из уже сконфигурированного sessionmaker'а приложения.
+    Если не получилось — из переменных окружения/настроек.
+    """
     try:
         main_maker = _session_factory_main()
         eng = getattr(main_maker, "bind", None)
@@ -184,6 +188,7 @@ def _resolve_db_url() -> str:
     except Exception:
         pass
 
+    # Только кандидаты БД! Никаких redis:// тут быть не должно.
     for key in ("DATABASE_URL", "SQLALCHEMY_DATABASE_URI", "DB_DSN"):
         v = os.getenv(key)
         if v:
@@ -198,7 +203,12 @@ def _resolve_db_url() -> str:
 
 def _session_factory_for_current_loop() -> tuple[async_sessionmaker[AsyncSession], AsyncEngine]:
     db_url = _resolve_db_url()
-    engine = create_async_engine(db_url, pool_size=5, max_overflow=10, pool_pre_ping=True)
+    try:
+        engine = create_async_engine(db_url, pool_size=5, max_overflow=10, pool_pre_ping=True)
+        print(f"🔗 WarehouseRunner engine created for DB: {db_url}", flush=True)
+    except Exception as e:
+        print(f"🔥 Failed to create AsyncEngine for DB URL={db_url}: {e}", flush=True)
+        raise
     maker = async_sessionmaker(engine, expire_on_commit=False)
     return maker, engine
 
@@ -306,6 +316,9 @@ async def _begin_scan(session: AsyncSession, robot: Robot, x: int, y: int) -> No
         _SCANNING_TARGET[robot.id] = (x, y)
         _SCANNING_UNTIL[robot.id] = datetime.now(timezone.utc) + SCAN_DURATION
 
+    # 🔎 лог для отладки
+    print(f"🔍 begin_scan: wh={robot.warehouse_id} robot={robot.id} at ({x},{y})", flush=True)
+
     if EMIT_POSITION_PER_ROBOT:
         await _emit_position(robot.warehouse_id, robot.id, x, y, robot.status, float(robot.battery_level or 0.0))
 
@@ -314,6 +327,9 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
     with _LOCK_SCAN:
         rx, ry = _SCANNING_TARGET.pop(robot.id, (int(robot.current_row or 0), int(robot.current_shelf or 0)))
         _SCANNING_UNTIL.pop(robot.id, None)
+
+    # 🔎 лог для отладки
+    print(f"✅ finish_scan: wh={robot.warehouse_id} robot={robot.id} at ({rx},{ry})", flush=True)
 
     shelf_letter = shelf_num_to_str(ry)
     result = await session.execute(
@@ -451,12 +467,25 @@ def _pick_goal(
     max_x: int,
     max_y: int,
 ) -> Tuple[int, int]:
-    if candidates:
+    """
+    Выбор следующей цели:
+      - исключаем текущую клетку;
+      - исключаем цели вне поля;
+      - предпочитаем ближайшие свободные (не заклейменные) клетки;
+      - fallback — случайная свободная клетка.
+    """
+    valid_candidates = [
+        (cx, cy)
+        for (cx, cy) in candidates
+        if (cx, cy) != start and 0 <= cx <= max_x and 1 <= cy <= max_y
+    ]
+
+    if valid_candidates:
         best_d: Optional[int] = None
         bucket: List[Tuple[int, int]] = []
         with _LOCK_TARGETS:
             claimed = _CLAIMED_TARGETS.setdefault(warehouse_id, set())
-            for c in candidates:
+            for c in valid_candidates:
                 if c in claimed:
                     continue
                 d = _manhattan(start, c)
@@ -531,9 +560,14 @@ async def _emit_position(warehouse_id: str, robot_id: str, x: int, y: int, statu
 # =========================
 
 async def _move_robot_once_impl(session: AsyncSession, robot_id: str, interval: float) -> None:
-    result = await session.execute(
-        select(Robot).where(Robot.id == robot_id).options(selectinload(Robot.warehouse))
-    )
+    try:
+        result = await session.execute(
+            select(Robot).where(Robot.id == robot_id).options(selectinload(Robot.warehouse))
+        )
+    except Exception as e:
+        print(f"⚠️ _move_robot_once_impl: DB error fetching robot {robot_id}: {e}", flush=True)
+        return
+
     robot = result.scalar_one_or_none()
     if not robot:
         return
@@ -597,7 +631,12 @@ async def _move_robot_once_impl(session: AsyncSession, robot_id: str, interval: 
         if goal:
             _free_claim(robot.warehouse_id, goal)
 
-        cells = await _product_cells_cached(session, robot.warehouse_id)
+        try:
+            cells = await _product_cells_cached(session, robot.warehouse_id)
+        except Exception as e:
+            print(f"⚠️ fetch product cells error (wh={robot.warehouse_id}): {e}", flush=True)
+            cells = []
+
         if cells:
             goal = _pick_goal(robot.warehouse_id, cur, cells, max_x, max_y)
         else:
@@ -646,7 +685,11 @@ async def _move_robot_once_impl(session: AsyncSession, robot_id: str, interval: 
     # если пришли в цель — запускаем скан или сбрасываем цель
     if (nx, ny) == goal:
         cutoff = datetime.now(timezone.utc) - RESCAN_COOLDOWN
-        eligible = await _eligible_products_for_scan(session, robot.warehouse_id, nx, ny, cutoff)
+        try:
+            eligible = await _eligible_products_for_scan(session, robot.warehouse_id, nx, ny, cutoff)
+        except Exception as e:
+            print(f"⚠️ eligible_products DB error (wh={robot.warehouse_id} at {nx},{ny}): {e}", flush=True)
+            eligible = []
         if not eligible:
             _free_claim(robot.warehouse_id, goal)
             with _LOCK_TARGETS:
@@ -706,7 +749,12 @@ class WarehouseRunner:
         self._queue = asyncio.Queue()
 
         # свой engine/sessionmaker для этого event loop
-        self._session_factory, self._engine = _session_factory_for_current_loop()
+        try:
+            self._session_factory, self._engine = _session_factory_for_current_loop()
+        except Exception:
+            # не смогли создать движок — петля бессмысленна
+            self._started.set()
+            return
 
         self._sema = asyncio.Semaphore(_MAX_CONCURRENT_ROBOTS_PER_WAREHOUSE)
         self._started.set()
@@ -789,9 +837,15 @@ class WarehouseRunner:
 
     async def _run_one_tick(self, interval: float) -> None:
         assert self._session_factory is not None
-        async with self._session_factory() as session:
-            result = await session.execute(select(Robot.id).where(Robot.warehouse_id == self.warehouse_id))
-            robot_ids = list(result.scalars().all())
+        try:
+            async with self._session_factory() as session:
+                result = await session.execute(select(Robot.id).where(Robot.warehouse_id == self.warehouse_id))
+                robot_ids = list(result.scalars().all())
+        except Exception as e:
+            print(f"⚠️ _run_one_tick: DB error fetching robot ids (wh={self.warehouse_id}): {e}", flush=True)
+            await self._janitor()
+            return
+
         if not robot_ids:
             await self._janitor()
             return

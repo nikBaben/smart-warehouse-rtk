@@ -21,7 +21,7 @@ async def ws_warehouse(ws: WebSocket, warehouse_id: str = Path(...)):
             await publish_inventory_scanned_24h_snapshot(session, warehouse_id)
             await publish_status_avg_snapshot(session, warehouse_id)
             await publish_product_snapshot(session, warehouse_id)
-            await publish_robot_activity_series_from_history(session, warehouse_id)
+            await publish_robot_activity_series_from_history(session, warehouse_id, force=True)
             await publish_robot_status_count_snapshot(session, warehouse_id)
         while True:
             await ws.receive_text()  # держим соединение
