@@ -1,14 +1,14 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
-from app.schemas.user import UserCreate, UserResponse
+from app.schemas.user import UserCreate, UserResponse, UserCreateWithKeycloak
 from app.repositories.user_repo import UserRepository
 from app.repositories.kkid_user_repo import KkidUserRepository
 from app.core.security import get_password_hash
 
 class UserService:
-    def __init__(self, session: AsyncSession):
-        self.user_repo = UserRepository(session)
-        self.kkid_user_repo = KkidUserRepository(session)
+    def __init__(self, userRepo: UserRepository, kkidUserRepo: KkidUserRepository):
+        self.user_repo = userRepo
+        self.kkid_user_repo = kkidUserRepo
 
     async def get_or_create_user_from_keycloak(self, kkid: str, email: str, user_info: dict, password: str):
         """Получаем или создаем пользователя на основе данных из Keycloak"""
@@ -41,9 +41,16 @@ class UserService:
         
         return user
 
-    async def create_user_with_keycloak(self, user_create: UserCreate, kkid: str):
+    async def create_user_with_keycloak(self, user_create: UserCreateWithKeycloak, kkid: str):
         """Создать пользователя в БД и связать с Keycloak ID"""
         try:
+            user_create = UserCreate(
+                email=user_create.email,
+                name=user_create.name,
+                role=user_create.role,
+                password_hash=get_password_hash(user_create.password)
+            )
+
             # Создаем пользователя в БД
             user = await self.user_repo.create(user_create)
             
@@ -67,3 +74,6 @@ class UserService:
     async def create_user(self, user_create: UserCreate):
         """Создать пользователя"""
         return await self.user_repo.create(user_create)
+    
+    async def get_user_by_id(self, user_id: str):
+        return await self.user_repo.get_by_id(user_id)

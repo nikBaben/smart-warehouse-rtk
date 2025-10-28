@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from app.schemas.user import UserCreate, UserUpdate, UserResponse
+from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserCreateWithKeycloak
 from app.service.user_service import UserService
 from app.service.keycloak_service import KeycloakService
 from app.api.deps import get_user_service, get_keycloak_service
@@ -9,7 +9,7 @@ router = APIRouter(prefix="/user", tags=["users"])
 
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user_handler(
-    user_in: UserCreate,
+    user_in: UserCreateWithKeycloak,
     user_service: UserService = Depends(get_user_service),
     keycloak_service: KeycloakService = Depends(get_keycloak_service)
 ):
@@ -22,7 +22,6 @@ async def create_user_handler(
             last_name="",  # или добавить поле в схему
             username=user_in.email  # используем email как username
         )
-        
         # 2. Создаем пользователя в БД приложения и связываем с Keycloak ID
         user = await user_service.create_user_with_keycloak(
             user_create=user_in,

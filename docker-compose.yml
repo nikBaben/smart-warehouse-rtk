@@ -17,7 +17,7 @@ services:
       retries: 10
 
   api:
-    build: .                
+    build: .              
     container_name: myapp-api
     working_dir: /app
     env_file:
@@ -75,29 +75,29 @@ services:
     command:
       - "start-dev"
       - "--verbose"
-      - "--hostname=http://51.250.97.137:8080"
+      #- "--hostname=http://51.250.97.137:8080"
       - "--http-enabled=true"
       - "--proxy-headers=xforwarded"
     ports:
       - "8080:8080"
 
-  caddy:
-    image: caddy:2
-    container_name: myapp-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - api
+  #caddy:
+   # image: caddy:2
+   # container_name: myapp-caddy
+    #restart: unless-stopped
+    #ports:
+    #  - "80:80"
+   #  - "443:443"
+   # volumes:
+    #  - ./Caddyfile:/etc/caddy/Caddyfile:ro
+   #   - caddy_data:/data
+    #  - caddy_config:/config
+   # depends_on:
+    #  - api
 
 
 volumes:
   pgdata:
   keycloak_pgdata:
-  caddy_data:
-  caddy_config:
+  #caddy_data:
+  #caddy_config:
