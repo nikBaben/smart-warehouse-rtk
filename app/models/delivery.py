@@ -9,10 +9,10 @@ from app.models.enums import DeliveryStatus
 from app.db.base import Base
 
 class Delivery(Base):
-    __tablename__ = "Delivery"
+    __tablename__ = "deliveries"
     
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=True, index=True)
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     warehouse_id: Mapped[Optional[str]] = mapped_column(
         String(50),
         ForeignKey("warehouse.id", ondelete="SET NULL", onupdate="CASCADE"),

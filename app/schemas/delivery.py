@@ -22,7 +22,7 @@ class DeliveryBase(BaseModel):
     
     
 class DeliveryCreate(DeliveryBase):
-    id: Optional[str] = Field(None, description="Optinal id")
+    id: Optional[str] = Field(None, description="Optional id")
     warehouse_id: Optional[str] = Field(None, description="warehouse id")
 
 
