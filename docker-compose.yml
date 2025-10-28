@@ -177,5 +177,5 @@ services:
 volumes:
   pgdata:
   keycloak_pgdata:
-  caddy_data:
-  caddy_config:
+  #caddy_data:
+  #caddy_config:
