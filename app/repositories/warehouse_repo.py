@@ -43,11 +43,67 @@ class WarehouseRepository:
         await self.session.refresh(warehouse)
         return warehouse
     
-    async def get_by_id(self, warehouse_id: str) -> Optional[Warehouse]:
+    async def get_by_id(self, warehouse_id: str) -> Warehouse:
         stmt = (
             select(Warehouse).where(Warehouse.id == warehouse_id)
         )
         return await self.session.scalar(stmt)
+    
+    async def edit_by_id(
+        self,
+        id: str,
+        *,
+        name: str | None = None,
+        address: str | None = None,
+        max_products: int | None = None
+    ) -> Warehouse:
+    # Находим склад по id
+        warehouse = await self.session.scalar(
+            select(Warehouse).where(Warehouse.id == id)
+        )
+        if not warehouse:
+            raise ValueError(f"Склад с id '{id}' не найден.")
+
+        # Проверяем, если нужно изменить имя — чтобы не было дублей
+        if name and name != warehouse.name:
+            existing_warehouse = await self.session.scalar(
+                select(Warehouse).where(Warehouse.name == name)
+            )
+            if existing_warehouse:
+                raise ValueError(f"Склад с именем '{name}' уже существует.")
+            warehouse.name = name
+
+        # Обновляем остальные поля
+        if address is not None:
+            warehouse.address = address
+
+        if max_products is not None:
+            warehouse.max_products = max_products
+
+        try:
+            await self.session.commit()
+        except IntegrityError as e:
+            await self.session.rollback()
+            raise e
+
+        await self.session.refresh(warehouse)
+        return warehouse
+    
+    async def delete(self, id: str):
+        warehouse = await self.session.scalar(
+            select(Warehouse).where(Warehouse.id == id)
+        )
+
+        if not warehouse:
+            raise ValueError(f"Склад с id '{id}' не найден.")
+
+        await self.session.delete(warehouse)
+
+        try:
+            await self.session.commit()
+        except IntegrityError as e:
+            await self.session.rollback()
+            raise e
 
     async def get_all(self, limit: int = 100, offset: int = 0) -> list[Warehouse]:
         result = await self.session.execute(

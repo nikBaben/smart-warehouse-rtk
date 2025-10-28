@@ -1,22 +1,28 @@
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer,String, DateTime, func, ForeignKey, Index
+# app/models/product.py
+from __future__ import annotations
+
 from datetime import datetime
+from typing import List, Optional
+
+from sqlalchemy import String, Integer, DateTime, func, ForeignKey, Index
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
+
 
 class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[str] = mapped_column(String(100))
-    article: Mapped[str] = mapped_column(String(100))
-    stock: Mapped[int] = mapped_column(Integer, default=100,nullable=False)
-    min_stock: Mapped[int] = mapped_column(Integer, default=20)
-    optimal_stock: Mapped[int] = mapped_column(Integer, default=80)
-    current_zone: Mapped[str] = mapped_column(String, default="Храненние")
-    current_row: Mapped[int] = mapped_column(Integer, default=0)
-    current_shelf: Mapped[str] = mapped_column(String, default="A")
-    status: Mapped[str] = mapped_column(String, default="ок")
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    article: Mapped[Optional[str]] = mapped_column(String(100))
+    stock: Mapped[int] = mapped_column(Integer, nullable=False, server_default="100")
+    min_stock: Mapped[int] = mapped_column(Integer, nullable=False, server_default="20")
+    optimal_stock: Mapped[int] = mapped_column(Integer, nullable=False, server_default="80")
+    current_zone: Mapped[str] = mapped_column(String(100), nullable=False, server_default="Хранение")
+    current_row: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    current_shelf: Mapped[str] = mapped_column(String(2), nullable=False, server_default="A")  # 'A'..'Z'
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="ok")
 
     warehouse_id: Mapped[str] = mapped_column(
         String(50),
@@ -25,24 +31,19 @@ class Product(Base):
         index=True,
     )
 
-    warehouse: Mapped["Warehouse"] = relationship( # type: ignore
-        back_populates="products",
-        lazy="joined",  
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    history: Mapped[list["InventoryHistory"]] = relationship(  # type: ignore
+    warehouse: Mapped["Warehouse"] = relationship(back_populates="products", lazy="joined")  # type: ignore
+    history: Mapped[List["InventoryHistory"]] = relationship(
         back_populates="product",
         lazy="selectin",
-        cascade="all, delete-orphan",
+        cascade="save-update, merge",
         passive_deletes=True,
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
-
     __table_args__ = (
-        Index("ix_products_warehouse_id_name", "warehouse_id", "name"),
+        # выборка «товары в ячейке»
+        Index("ix_products_wh_row_shelf", "warehouse_id", "current_row", "current_shelf"),
+        # частые фильтры по названию в рамках склада
+        Index("ix_products_wh_name", "warehouse_id", "name"),
     )

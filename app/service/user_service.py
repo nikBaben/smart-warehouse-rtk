@@ -1,56 +1,68 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.future import select
-from app.models.user import User
-from app.schemas.user import UserCreate, UserUpdate
-from typing import Optional
-from app.core.security import get_password_hash
+from fastapi import HTTPException
+from app.schemas.user import UserCreate, UserResponse
+from app.repositories.user_repo import UserRepository
+from app.repositories.kkid_user_repo import KkidUserRepository
 
-async def create_user(session: AsyncSession, user_in: UserCreate) -> User:
-    """Создать пользователя с хешированием пароля"""
-    # Хешируем пароль перед сохранением
-    hashed_password = get_password_hash(user_in.password)
-    
-    # Создаем данные для пользователя, исключая пароль
-    user_data = user_in.model_dump(exclude={'password'})
-    user_data['password_hash'] = hashed_password
-    
-    user = User(**user_data)
-    session.add(user)
-    try:
-        await session.commit()
-        await session.refresh(user)
-    except IntegrityError:
-        await session.rollback()
-        raise ValueError("User with this email already exists")
-    return user
+class UserService:
+    def __init__(self, session: AsyncSession):
+        self.user_repo = UserRepository(session)
+        self.kkid_user_repo = KkidUserRepository(session)
 
-async def get_user_by_id(session: AsyncSession, user_id: int) -> Optional[User]:
-    result = await session.execute(select(User).where(User.id == user_id))
-    return result.scalar_one_or_none()
+    async def get_or_create_user_from_keycloak(self, kkid: str, email: str, user_info: dict):
+        """Получаем или создаем пользователя на основе данных из Keycloak"""
+        # Пытаемся найти пользователя по Keycloak ID
+        user = await self.user_repo.get_by_kkid(kkid)
+        
+        if not user:
+            # Если не нашли по Keycloak ID, ищем по email
+            user = await self.user_repo.get_by_email(email)
+            
+            if not user:
+                # Создаем нового пользователя
+                roles = user_info.get('realm_access', {}).get('roles', [])
+                user_role = roles[3] if len(roles) > 3 else 'user'
+                
+                user_create = UserCreate(
+                    email=email,
+                    name=user_info.get('name', user_info.get('preferred_username', email)),
+                    role=user_role,
+                    password="keycloak_authenticated"  # пароль не используется при Keycloak аутентификации
+                )
+                user = await self.user_repo.create(user_create)
+                print(f"✅ Created new user: {user.id}, email: {user.email}")
+            
+            # Создаем связь между Keycloak ID и User ID
+            await self.kkid_user_repo.create(kkid, user.id)
+            print(f"✅ Created kkid_userid link: kkid={kkid}, user_id={user.id}")
+        else:
+            print(f"✅ User found via kkid: {user.id}")
+        
+        return user
 
-async def get_user_by_email(session: AsyncSession, email: str) -> Optional[User]:
-    result = await session.execute(select(User).where(User.email == email))
-    return result.scalar_one_or_none()
+    async def create_user_with_keycloak(self, user_create: UserCreate, kkid: str):
+        """Создать пользователя в БД и связать с Keycloak ID"""
+        try:
+            # Создаем пользователя в БД
+            user = await self.user_repo.create(user_create)
+            
+            # Создаем связь с Keycloak
+            await self.kkid_user_repo.create(kkid, user.id)
+            
+            return user
+        except Exception as e:
+            # Если произошла ошибка, откатываем сессию
+            await self.session.rollback()
+            raise e
 
-async def update_user(
-    session: AsyncSession,
-    user_id: int,
-    user_update: UserUpdate
-) -> Optional[User]:
-    user = await get_user_by_id(session, user_id)
-    if not user:
-        return None
+    async def get_user_by_kkid(self, kkid: str):
+        """Получить пользователя по Keycloak ID"""
+        return await self.user_repo.get_by_kkid(kkid)
 
-    update_data = user_update.model_dump(exclude_unset=True)
-    
-    # Если обновляется пароль - хешируем его
-    if 'password' in update_data:
-        update_data['password_hash'] = get_password_hash(update_data.pop('password'))
-    
-    for field, value in update_data.items():
-        setattr(user, field, value)
+    async def get_user_by_email(self, email: str):
+        """Получить пользователя по email"""
+        return await self.user_repo.get_by_email(email)
 
-    await session.commit()
-    await session.refresh(user)
-    return user
+    async def create_user(self, user_create: UserCreate):
+        """Создать пользователя"""
+        return await self.user_repo.create(user_create)

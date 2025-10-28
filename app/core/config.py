@@ -8,7 +8,9 @@ class Settings(BaseSettings):
     KEYCLOAK_REALM: str
     KEYCLOAK_CLIENT_ID: str
     KEYCLOAK_CLIENT_SECRET: str
-    CORS_ORIGINS: list[str] 
+    CORS_ORIGINS: list[str]
+    KEYCLOAK_ADMIN_USERNAME: str
+    KEYCLOAK_ADMIN_PASSWORD: str
 
     model_config = {
         "env_file": ".env",

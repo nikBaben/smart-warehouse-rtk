@@ -7,12 +7,17 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from app.schemas.robot import RobotCreate
+from app.schemas.alarm import AlarmCreate
 from app.repositories.robot_repo import RobotRepository
+from app.service.alarm_service import AlarmService
 from app.models.robot import Robot
 
+
+
 class RobotService:
-    def __init__(self, repo: RobotRepository):
+    def __init__(self, repo: RobotRepository,alarm_service:AlarmService):
         self.repo = repo
+        self.alarm_service = alarm_service
 
     async def create_id(self) -> str:
         alphabet = string.digits + string.ascii_uppercase  # 0-9 + A-Z
@@ -26,7 +31,7 @@ class RobotService:
         rnd = random.randint(0, 1295)
         return base36(ts % 1296) + base36(rnd)
 
-    async def create_robot(self, data: RobotCreate) -> Robot:
+    async def create_robot(self, data: RobotCreate)->Robot:#, user_id: int) -> Robot:
 
         robot_id = await self.create_id()
 
@@ -44,7 +49,15 @@ class RobotService:
                 warehouse_id=data.warehouse_id, 
                 check_warehouse_exists=True
             )
+            #await self.alarm_service.create_alarm(
+            #    AlarmCreate(user_id=user_id, message="Робот создан")
+            #)
             return robot
+        
+        
+
+    
+
 
         except IntegrityError as e:
             code = getattr(getattr(e, "orig", None), "pgcode", None) or getattr(getattr(e, "orig", None), "sqlstate", None)
@@ -57,9 +70,30 @@ class RobotService:
             if code == "23503":  
                 raise HTTPException(status_code=422, detail="Related entity not found (FK violation)")
             raise HTTPException(status_code=500, detail=f"Integrity error: {detail}")
+    
+    async def delete_robot(self, robot_id: str) -> dict:
+        try:
+            await self.repo.delete(robot_id)
+            return {"detail": f"Робот с id '{robot_id}' успешно удалён."}
+
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+        except IntegrityError as e:
+            code = getattr(getattr(e, "orig", None), "pgcode", None) or getattr(getattr(e, "orig", None), "sqlstate", None)
+            detail = str(getattr(getattr(e, "orig", None), "diag", None) or e.orig or e)
+
+            if code == "23503":  # FK violation
+                raise HTTPException(
+                    status_code=422,
+                    detail="Невозможно удалить робота: на него ссылаются другие сущности (FK violation)."
+                )
+            raise HTTPException(status_code=500, detail=f"Integrity error: {detail}")
         
     async def get_robots_by_warehouse_id(self, warehouse_id: str):
         robots = await self.repo.get_all_by_warehouse_id(warehouse_id)
         if not robots:
             raise ValueError(f"Роботы на скалде id '{warehouse_id}' не найдены.")
         return robots
+    
+    

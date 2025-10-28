@@ -23,3 +23,8 @@ class WarehouseResponse(WarehouseBase):
 
     class Config:
         from_attributes = True 
+
+class WarehouseUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1)
+    address: Optional[str] = Field(None, min_length=1)
+    max_products: Optional[int] = Field(None, ge=0)

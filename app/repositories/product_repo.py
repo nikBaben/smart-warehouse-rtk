@@ -1,4 +1,5 @@
 from typing import Optional, List
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func,update
 from sqlalchemy.exc import IntegrityError
@@ -31,6 +32,8 @@ class ProductRepository:
             )
             if not exists:
                 raise ValueError(f"Склад '{warehouse_id}' не найден")
+            
+        await self.check_limit(warehouse_id,stock)
 
         product = Product(
             id=id,
@@ -49,7 +52,7 @@ class ProductRepository:
         self.session.add(product)
         try:
             await self.session.flush()
-            await self._bump_products_count(warehouse_id, +stock)
+            await self.bump_products_count(warehouse_id, +stock)
             await self.session.commit()
         except IntegrityError as e:
             await self.session.rollback()
@@ -69,14 +72,16 @@ class ProductRepository:
             select(Product).where(Product.id == id)
         )
     
-    async def update_partial(
+    async def edit(
         self,
         id: str,
         *,
         name: Optional[str] = None,
+        article: Optional[str] = None,
+        stock: Optional[int] = None,
         category: Optional[str] = None,
-        min_stock: Optional[int] = None,
-        optimal_stock: Optional[int] = None,
+        current_row: Optional[int],
+        current_shelf: Optional[str],
         warehouse_id: Optional[str] = None,
         check_warehouse_exists: bool = True,
     ) -> Optional[Product]:
@@ -85,6 +90,7 @@ class ProductRepository:
             return None
 
         old_wh = product.warehouse_id
+        old_stock = product.stock
         new_wh = old_wh
 
         if warehouse_id is not None and warehouse_id != old_wh:
@@ -98,22 +104,27 @@ class ProductRepository:
                 raise ValueError(f"Склад '{warehouse_id}' не найден")
             product.warehouse_id = new_wh = warehouse_id
 
+        if stock != old_stock:
+            await self.bump_products_count(old_wh,-product.stock)
+            await self.check_limit(warehouse_id,stock)
+            await self.bump_products_count(old_wh,+stock)
+        
+
         if name is not None:
             product.name = name
         if category is not None:
             product.category = category
-        if min_stock is not None:
-            product.min_stock = min_stock
-        if optimal_stock is not None:
-            product.optimal_stock = optimal_stock
+        if stock is not None:
+            product.stock = stock
+        if article is not None:
+            product.article = article
+        if current_row is not None:
+            product.current_row = current_row
+        if current_shelf is not None:
+            product.current_shelf = current_shelf
 
         try:
             await self.session.flush()
-            if new_wh != old_wh:
-                if old_wh:
-                    await self._bump_products_count(old_wh, -optimal_stock)
-                if new_wh:
-                    await self._bump_products_count(new_wh, +optimal_stock)
             await self.session.commit()
         except IntegrityError as e:
             await self.session.rollback()
@@ -142,16 +153,37 @@ class ProductRepository:
 
     
 
-    async def delete(self, id: str) -> bool:
-        product = await self.get(id)
+    async def delete(self, id: str):
+        product = await self.session.scalar(
+            select(Product).where(Product.id == id)
+        )
+        
         if not product:
-            return False
+            raise ValueError(f"Товар с id '{id}' не найден.")
 
+        await self.bump_products_count(product.warehouse_id,-product.stock)
         await self.session.delete(product)
-        await self.session.commit()
-        return True
-    
-    async def _bump_products_count(self, warehouse_id: str, delta: int) -> None:
+        
+        try:
+            await self.session.commit()
+        except IntegrityError as e:
+            await self.session.rollback()
+            raise e
+
+    async def check_limit(self, warehouse_id:str, stock:int):
+        result = await self.session.execute(
+            select(Warehouse.max_products, Warehouse.products_count)
+            .where(Warehouse.id == warehouse_id)
+        )
+        limit, products_count = result.one_or_none() or (None, None)
+        allow = limit - products_count
+        if stock > allow:
+            raise HTTPException(
+            status_code=400,
+            detail=f"Склад '{warehouse_id}' переполнен. Можно добавить только {allow} товаров."
+        )
+        
+    async def bump_products_count(self, warehouse_id: str, delta: int) -> None:
         if not warehouse_id:
             return
         stmt = (

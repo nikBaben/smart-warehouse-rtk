@@ -19,6 +19,7 @@ class UserResponse(BaseModel):
     id: int
     name: str
     role: str
+    email: str
 
 class UserInDB(UserBase):
     id: int
