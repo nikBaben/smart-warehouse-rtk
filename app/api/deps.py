@@ -62,9 +62,9 @@ def get_product_service(repo: ProductRepository = Depends(get_product_repo)) -> 
 def get_warehouse_service(repo: WarehouseRepository = Depends(get_warehouse_repo)) -> WarehouseService:
     return WarehouseService(repo)
 
-async def get_auth_service(session: AsyncSession = Depends(get_session)) -> AuthService:
+async def get_auth_service(session: AsyncSession = Depends(get_session), userRepo:UserRepository = Depends(get_user_repo), kkidUserRepo: KkidUserRepository = Depends(get_kkid_user_repo)) -> AuthService:
     keycloak_service = KeycloakService()
-    user_service = UserService(session)
+    user_service = UserService(userRepo, kkidUserRepo)
     return AuthService(keycloak_service, user_service)
 
 def get_user_service(userRepo:UserRepository = Depends(get_user_repo), kkidUserRepo: KkidUserRepository = Depends(get_kkid_user_repo)) -> UserService:

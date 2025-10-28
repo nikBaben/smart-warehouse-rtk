@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional, Dict, Any
 from fastapi import HTTPException
-from app.schemas.user import UserCreate, UserResponse, UserCreateWithKeycloak
+from app.schemas.user import UserCreate, UserResponse, UserCreateWithKeycloak, UserUpdate
 from app.repositories.user_repo import UserRepository
 from app.repositories.kkid_user_repo import KkidUserRepository
 from app.core.security import get_password_hash
@@ -77,3 +78,7 @@ class UserService:
     
     async def get_user_by_id(self, user_id: str):
         return await self.user_repo.get_by_id(user_id)
+    
+    async def update_user(self, user_id: int, user_update: UserUpdate):
+        """Обновить пользователя"""
+        return await self.user_repo.update(user_id, user_update)

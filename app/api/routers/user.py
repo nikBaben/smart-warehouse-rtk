@@ -68,10 +68,15 @@ async def update_user_handler(
     user_update: UserUpdate,
     user_service: UserService = Depends(get_user_service)
 ):
+    # Пытаемся обновить пользователя
     user = await user_service.update_user(user_id, user_update)
+    
+    # Если пользователь не найден (вернулся None), бросаем исключение
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
+    
+    # Если пользователь успешно обновлен, возвращаем его
     return user

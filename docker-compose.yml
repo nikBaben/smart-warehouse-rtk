@@ -7,21 +7,21 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5433:5432"   # внешний порт 5433 → внутренний 5432 (для подключения с хоста)
+      - '5433:5432' # внешний порт 5433 → внутренний 5432 (для подключения с хоста)
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d myapp"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d myapp']
       interval: 5s
       timeout: 3s
       retries: 10
 
   api:
-    build: .              
+    build: .
     container_name: myapp-api
     working_dir: /app
     env_file:
-      - .env                  
+      - .env
     environment:
       # ПЕРЕОПРЕДЕЛЯЕМ только адрес БД для контейнера:
       # важно: host = db, порт = 5432 (внутренний порт сервиса Postgres)
@@ -32,14 +32,14 @@ services:
       keycloak:
         condition: service_started
     ports:
-      - "8000:8000"  
+      - '8000:8000'
     expose:
-      - "8000"                 # доступно только внутри docker-сети
+      - '8000' # доступно только внутри docker-сети
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
     volumes:
       - ./:/app
       - ./tools/websocat:/usr/local/bin/websocat:ro
-  
+
   # --- База данных для Keycloak ---
   keycloak-db:
     image: postgres:15-alpine
@@ -49,11 +49,11 @@ services:
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD: keycloak
     ports:
-      - "5432:5432" 
+      - '5432:5432'
     volumes:
       - keycloak_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak_db"]
+      test: ['CMD-SHELL', 'pg_isready -U keycloak -d keycloak_db']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -73,31 +73,30 @@ services:
       keycloak-db:
         condition: service_healthy
     command:
-      - "start-dev"
-      - "--verbose"
-      - "--hostname=http://51.250.97.137:8080"
-      - "--http-enabled=true"
-      - "--proxy-headers=xforwarded"
+      - 'start-dev'
+      - '--verbose'
+      #- "--hostname=http://51.250.97.137:8080"
+      - '--http-enabled=true'
+      - '--proxy-headers=xforwarded'
     ports:
-      - "8080:8080"
+      - '8080:8080'
 
-  caddy:
-    image: caddy:2
-    container_name: myapp-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - api
-
+  #caddy:
+  #image: caddy:2
+  #container_name: myapp-caddy
+  #restart: unless-stopped
+  #ports:
+  #  - "80:80"
+  #  - "443:443"
+  #volumes:
+  #  - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  # - caddy_data:/data
+  # - caddy_config:/config
+  #depends_on:
+  # - api
 
 volumes:
   pgdata:
   keycloak_pgdata:
-  caddy_data:
-  caddy_config:
+  #caddy_data:
+  #caddy_config:
