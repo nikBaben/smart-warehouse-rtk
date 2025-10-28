@@ -7,7 +7,8 @@ from app.ws.inventory_scans_streamer import publish_inventory_scanned_24h_snapsh
 from app.ws.inventory_status import publish_status_avg_snapshot
 from app.ws.products_events import publish_product_snapshot
 from app.ws.robot_status_count_streamer import publish_robot_status_count_snapshot
-from app.ws.robot_activity_streamer import build_robot_activity_series_payload
+from app.ws.robot_activity_streamer import publish_robot_activity_series_from_history
+
 
 router = APIRouter()
 
@@ -21,9 +22,8 @@ async def ws_warehouse(ws: WebSocket, warehouse_id: str = Path(...)):
             await publish_inventory_scanned_24h_snapshot(session, warehouse_id)
             await publish_status_avg_snapshot(session, warehouse_id)
             await publish_product_snapshot(session, warehouse_id)
+            await publish_robot_activity_series_from_history(session, warehouse_id, force=True)
             await publish_robot_status_count_snapshot(session, warehouse_id)
-            payload = await build_robot_activity_series_payload(session, warehouse_id)
-            await ws.send_json(payload)
         while True:
             await ws.receive_text()  # держим соединение
     except WebSocketDisconnect:

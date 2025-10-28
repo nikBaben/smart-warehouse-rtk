@@ -68,11 +68,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/myapp
       REDIS_DSN: redis://redis:6379/0
       # тонкий пул для воркера, чтобы не душить API
-      ROBOT_POOL_SIZE: "8"
-      ROBOT_MAX_OVERFLOW: "16"
+      ROBOT_POOL_SIZE: "30"
+      ROBOT_MAX_OVERFLOW: "60"
       ROBOT_POOL_TIMEOUT: "30.0"
       # (опционально) ограничим параллелизм роботов на склад
-      ROBOT_CONCURRENCY: "4"
+      ROBOT_CONCURRENCY: "10"
     depends_on:
       db:
         condition: service_healthy
