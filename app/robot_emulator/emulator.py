@@ -37,8 +37,8 @@ from app.events.bus import (
 # =========================
 # Управление форматом событий позиции
 # =========================
-EMIT_POSITION_PER_ROBOT = True   # одиночные события для каждого робота
-EMIT_POSITION_BATCH = False      # один батч на склад за тик
+EMIT_POSITION_PER_ROBOT = False   # одиночные события для каждого робота
+EMIT_POSITION_BATCH = True      # один батч на склад за тик
 
 # =========================
 # Параметры поля / зарядки / сканирования
@@ -47,7 +47,9 @@ DOCK_X, DOCK_Y = 0, 0
 SCAN_DURATION = timedelta(seconds=5)
 CHARGE_DURATION = timedelta(minutes=15)
 MIN_BATT_DROP_PER_STEP = 0.2
-RESCAN_COOLDOWN = timedelta(minutes=3)
+RESCAN_COOLDOWN = timedelta(seconds=15)  # ← по требованию: 15 секунд
+# Предохранитель от залипания скана: максимальная длительность скана
+SCAN_STUCK_FACTOR = 3  # не более 3 * SCAN_DURATION
 
 # =========================
 # Конфигурация логирования истории робота
@@ -85,7 +87,8 @@ _MAX_CONCURRENT_ROBOTS_PER_WAREHOUSE = 8
 # Антизасор: ретеншн и клининг
 # =========================
 EVENT_QUEUE_MAXSIZE = 10000
-INVENTORY_HISTORY_RETENTION = timedelta(hours=6)
+# Отключаем чистку истории инвентаризации: None = никогда не удалять
+INVENTORY_HISTORY_RETENTION: Optional[timedelta] = None
 INVENTORY_HISTORY_CLEAN_CHUNK = 1000
 WAREHOUSE_JANITOR_EVERY = timedelta(minutes=5)
 
@@ -95,6 +98,9 @@ WAREHOUSE_JANITOR_EVERY = timedelta(minutes=5)
 ROBOT_EVENT_TYPES = {"robot.position", "product.scan"}
 POSITION_RATE_LIMIT = timedelta(seconds=2)
 _LAST_POSITION_SENT_AT: Dict[str, datetime] = {}
+
+# Отправлять product.scan даже если товары под cooldown
+EMIT_EMPTY_SCAN_EVENTS = True
 
 # =========================
 # Синглтон-гарды для вотчера
@@ -111,15 +117,19 @@ _WAREHOUSE_NEXT_JANITOR_AT: Dict[str, datetime] = {}
 # =========================
 
 def shelf_str_to_num(s: Optional[str]) -> int:
+    """
+    Преобразует строковую полку в номер.
+    ВАЖНО: None и пустые значения -> 0 (нет валидной полки), чтобы не создавать фиктивные цели.
+    """
     if s is None:
-        return 1
+        return 0
     s = s.strip()
+    if not s:
+        return 0
     if s == "0":
         return 0
-    if not s:
-        return 1
     c = s.upper()[:1]
-    return (ord(c) - ord("A")) + 1 if "A" <= c <= "Z" else 1
+    return (ord(c) - ord("A")) + 1 if "A" <= c <= "Z" else 0
 
 
 def shelf_num_to_str(n: int) -> str:
@@ -244,7 +254,15 @@ def _touch_robot(robot: Robot) -> None:
 # Работа с товарами / сканирование
 # =========================
 async def _product_cells(session: AsyncSession, warehouse_id: str) -> List[Tuple[int, int]]:
-    q = select(distinct(Product.current_row), Product.current_shelf).where(Product.warehouse_id == warehouse_id)
+    """
+    Возвращает уникальные (row, shelf_num) для склада, исключая полки <= 0.
+    """
+    # Надёжный DISTINCT по паре колонок
+    q = (
+        select(Product.current_row, Product.current_shelf)
+        .where(Product.warehouse_id == warehouse_id)
+        .distinct()
+    )
     rows = await session.execute(q)
     cells: List[Tuple[int, int]] = []
     for r, shelf_str in rows.all():
@@ -291,12 +309,15 @@ async def _eligible_products_for_scan(
     cutoff: datetime,
 ) -> List[Product]:
     shelf_letter = shelf_num_to_str(y)
+    if shelf_letter == "0":
+        return []
     q = (
         select(Product)
         .where(
             Product.warehouse_id == warehouse_id,
             Product.current_row == x,
-            Product.current_shelf == shelf_letter,
+            # нормализация полки (безопасно даже если в БД уже всё чисто)
+            func.upper(func.trim(Product.current_shelf)) == shelf_letter,
         )
     )
     rows = await session.execute(q)
@@ -332,21 +353,61 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
     print(f"✅ finish_scan: wh={robot.warehouse_id} robot={robot.id} at ({rx},{ry})", flush=True)
 
     shelf_letter = shelf_num_to_str(ry)
+    # Если полка нулевая — всё равно шлем пустой продуктовый эвент (для наблюдаемости)
+    if shelf_letter == "0":
+        if EMIT_EMPTY_SCAN_EVENTS:
+            await _emit({
+                "type": "product.scan",
+                "warehouse_id": robot.warehouse_id,
+                "robot_id": robot.id,
+                "x": rx,
+                "y": ry,
+                "shelf": shelf_letter,
+                "products": [],
+                "reason": "no_valid_shelf",
+            })
+        _free_claim(robot.warehouse_id, (rx, ry))
+        robot.status = "idle"
+        _touch_robot(robot)
+        await _log_status_every_tick(session, robot)
+        return
+
     result = await session.execute(
         select(Product).where(
             Product.warehouse_id == robot.warehouse_id,
             Product.current_row == rx,
-            Product.current_shelf == shelf_letter,
+            func.upper(func.trim(Product.current_shelf)) == shelf_letter,
         )
     )
     products = list(result.scalars().all())
 
+    # Применяем cooldown только для payload, но событие отправляем ТОЛЬКО если именно cooldown
+    under_cooldown = False
     if products:
         cutoff = datetime.now(timezone.utc) - RESCAN_COOLDOWN
         last_map = await _last_scans_map(session, robot.warehouse_id)
-        products = [p for p in products if (last_map.get(p.id) is None) or (last_map[p.id] < cutoff)]
+        fresh = []
+        for p in products:
+            ts = last_map.get(p.id)
+            if (ts is None) or (ts < cutoff):
+                fresh.append(p)
+        under_cooldown = (len(fresh) == 0)
+        products = fresh
 
     if not products:
+        # >>> По просьбе: НЕ отправляем product.scan, если на клетке нет товаров.
+        #     Отправляем только если это именно "under_cooldown".
+        if under_cooldown and EMIT_EMPTY_SCAN_EVENTS:
+            await _emit({
+                "type": "product.scan",
+                "warehouse_id": robot.warehouse_id,
+                "robot_id": robot.id,
+                "x": rx,
+                "y": ry,
+                "shelf": shelf_letter,
+                "products": [],
+                "reason": "under_cooldown",
+            })
         _free_claim(robot.warehouse_id, (rx, ry))
         robot.status = "idle"
         _touch_robot(robot)
@@ -397,8 +458,10 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
             "scanned_at": now_iso,
         })
 
+    # добавляем и флашим (на случай триггеров/дефолтов created_at)
     with session.no_autoflush:
         session.add_all(history_rows)
+    await session.flush()
 
     await _emit({
         "type": "product.scan",
@@ -410,6 +473,7 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
         "products": payload_products,
     })
 
+    # обновляем кэш последних сканов
     cached = _LAST_SCAN_CACHE.get(robot.warehouse_id)
     if cached:
         mp = dict(cached[1])
@@ -583,11 +647,41 @@ async def _move_robot_once_impl(session: AsyncSession, robot_id: str, interval: 
     # сканирование
     with _LOCK_SCAN:
         scanning_until = _SCANNING_UNTIL.get(robot.id)
+        scanning_target = _SCANNING_TARGET.get(
+            robot.id,
+            (int(robot.current_row or 0), int(robot.current_shelf or 0)),
+        )
     if (robot.status or "").lower() == "scanning":
         _touch_robot(robot)
         await _log_status_every_tick(session, robot)
-        if scanning_until and datetime.now(timezone.utc) >= scanning_until:
+        now_utc = datetime.now(timezone.utc)
+
+        # 1) Восстановление состояния после рестартов:
+        #    статус в БД "scanning", но таймеров в памяти нет.
+        if scanning_until is None:
+            with _LOCK_SCAN:
+                _SCANNING_TARGET[robot.id] = scanning_target
+                _SCANNING_UNTIL[robot.id] = now_utc + SCAN_DURATION
+                scanning_until = _SCANNING_UNTIL[robot.id]
+            # после инициализации даём роботу досканировать нормальным путём
+
+        # 2) Нормальное завершение по таймеру
+        if scanning_until and now_utc >= scanning_until:
             await _finish_scan(session, robot)
+            return
+
+        # 3) Предохранитель от залипания: если дольше, чем SCAN_STUCK_FACTOR * SCAN_DURATION
+        if scanning_until:
+            try:
+                started_at = scanning_until - SCAN_DURATION
+                if now_utc - started_at > (SCAN_DURATION * SCAN_STUCK_FACTOR):
+                    print(f"⚠️ scan stuck: forcing finish (robot={robot.id})", flush=True)
+                    await _finish_scan(session, robot)
+                    return
+            except Exception:
+                # безопасный fallback: если что-то пошло не так — форсируем завершение
+                await _finish_scan(session, robot)
+                return
         return
 
     # зарядка
@@ -816,24 +910,29 @@ class WarehouseRunner:
         _prune(_LAST_LOGGED_STATE)   # type: ignore[arg-type]
         _prune(_LAST_HISTORY_AT)     # type: ignore[arg-type]
 
-        cutoff = now - INVENTORY_HISTORY_RETENTION
-        try:
-            async with self._session_factory() as s:
-                async with s.begin():
-                    ids_stmt = (
-                        select(InventoryHistory.id)
-                        .where(
-                            InventoryHistory.warehouse_id == self.warehouse_id,
-                            InventoryHistory.created_at < cutoff
+        # Чистку InventoryHistory полностью отключаем,
+        # если INVENTORY_HISTORY_RETENTION не задана (None).
+        if INVENTORY_HISTORY_RETENTION is not None:
+            cutoff = now - INVENTORY_HISTORY_RETENTION
+            try:
+                async with self._session_factory() as s:
+                    async with s.begin():
+                        ids_stmt = (
+                            select(InventoryHistory.id)
+                            .where(
+                                InventoryHistory.warehouse_id == self.warehouse_id,
+                                InventoryHistory.created_at < cutoff
+                            )
+                            .limit(INVENTORY_HISTORY_CLEAN_CHUNK)
                         )
-                        .limit(INVENTORY_HISTORY_CLEAN_CHUNK)
-                    )
-                    ids_res = await s.execute(ids_stmt)
-                    ids = [row[0] for row in ids_res.fetchall()]
-                    if ids:
-                        await s.execute(delete(InventoryHistory).where(InventoryHistory.id.in_(ids)))
-        except Exception as e:
-            print(f"⚠️ Janitor({self.warehouse_id}) cleanup error: {e}", flush=True)
+                        ids_res = await s.execute(ids_stmt)
+                        ids = [row[0] for row in ids_res.fetchall()]
+                        if ids:
+                            await s.execute(
+                                delete(InventoryHistory).where(InventoryHistory.id.in_(ids))
+                            )
+            except Exception as e:
+                print(f"⚠️ Janitor({self.warehouse_id}) cleanup error: {e}", flush=True)
 
     async def _run_one_tick(self, interval: float) -> None:
         assert self._session_factory is not None

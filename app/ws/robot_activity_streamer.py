@@ -5,43 +5,40 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, func, and_, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# ✅ публикуем через фабрику шины под ТЕКУЩИЙ event loop
+# публикуем через фабрику шины под ТЕКУЩИЙ event loop
 from app.events.bus import get_bus_for_current_loop, COMMON_CH
 from app.db.session import async_session
 from app.models.robot import Robot
 from app.models.robot_history import RobotHistory
 
-# менеджер комнат есть только в API-процессе — пробуем подтянуть опционально
+# менеджер комнат есть только в API-процессе — подтягиваем опционально
 try:
     from app.ws.ws_manager import manager  # type: ignore
 except Exception:
     manager = None  # type: ignore
 
-# --- какие статусы считаются активными ---
+# --- активные статусы ---
 ACTIVE_STATUSES = ("idle", "scanning")
 
-# --- параметры вывода ---
-POINTS_COUNT = 7  # ровно 7 точек
-BUCKET_SEC = 600  # 10 минут
-WINDOW_MIN = POINTS_COUNT * (BUCKET_SEC // 60)  # 70 минут
+# --- параметры окна/оси ---
+POINTS_COUNT = 7                 # 7 точек
+BUCKET_SEC = 600                 # 10 минут
+WINDOW_MIN = POINTS_COUNT * 10   # 70 минут
 
-# --- внутреннее состояние ---
-_last_bucket_sent: Dict[str, datetime] = {}         # дедупликация по бакету «сейчас»
-_next_allowed_emit: Dict[str, datetime] = {}        # ЖЁСТКАЯ пауза ≥10 минут от последней отправки (якорится на первом снапшоте)
+# --- локальная дедупликация (на случай нескольких одновременных вызовов в одном процессе) ---
+_last_bucket_sent: Dict[str, datetime] = {}  # warehouse_id -> last bucket_end (UTC)
 
-# === служебные утилиты ===
+# ========== утилиты ==========
 def _ensure_utc(ts: datetime) -> datetime:
     return ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
-
 
 def _floor(ts: datetime, bucket_sec: int) -> datetime:
     ts = _ensure_utc(ts)
     s = int(ts.timestamp())
     return datetime.fromtimestamp(s - s % bucket_sec, tz=timezone.utc)
 
-
 def _axis_from_last(now_like: datetime, buckets: int, bucket_sec: int) -> List[datetime]:
-    """Формируем ось времени из 'buckets' точек, заканчивающуюся бакетом, содержащим now_like."""
+    """Ось времени из 'buckets' точек, заканчивающуюся бакетом, содержащим now_like."""
     end = _floor(now_like, bucket_sec)
     start = end - timedelta(seconds=bucket_sec * (buckets - 1))
     t = start
@@ -51,22 +48,19 @@ def _axis_from_last(now_like: datetime, buckets: int, bucket_sec: int) -> List[d
         t += timedelta(seconds=bucket_sec)
     return out[-buckets:]
 
-
 def _bucket_end_of(ts: datetime, bucket_sec: int) -> datetime:
     return _floor(ts, bucket_sec)
 
-# === запросы в БД ===
+# ========== запросы к БД ==========
 async def _total_robots(session: AsyncSession, wh: str) -> int:
     val = await session.scalar(select(func.count(Robot.id)).where(Robot.warehouse_id == wh))
     return int(val or 0)
-
 
 async def _latest_history_timestamp(session: AsyncSession, wh: str) -> Optional[datetime]:
     ts = await session.scalar(
         select(func.max(RobotHistory.created_at)).where(RobotHistory.warehouse_id == wh)
     )
     return _ensure_utc(ts) if ts else None
-
 
 async def _baseline_statuses_before(
     session: AsyncSession, wh: str, before_ts: datetime
@@ -94,14 +88,13 @@ async def _baseline_statuses_before(
         out[str(rid)] = str(status).lower() if status else ""
     return out
 
-
 async def _events_in_window(
     session: AsyncSession,
     wh: str,
     start_inclusive: datetime,
     end_inclusive: datetime
 ) -> List[Tuple[str, str, datetime]]:
-    """Возвращает (robot_id, status, created_at) внутри окна [start, end], по времени."""
+    """(robot_id, status, created_at) внутри окна [start, end], по времени."""
     q = (
         select(RobotHistory.robot_id, RobotHistory.status, RobotHistory.created_at)
         .where(RobotHistory.warehouse_id == wh)
@@ -115,22 +108,19 @@ async def _events_in_window(
         out.append((str(rid), (status or "").lower(), _ensure_utc(ts)))
     return out
 
-
 def _carry_forward_active_counts(
     axis: List[datetime],
     baseline: Dict[str, str],
     events: List[Tuple[str, str, datetime]],
     total_robots: int,
 ) -> List[Tuple[str, float]]:
-    """На конец каждого бакета считаем % активных (ACTIVE_STATUSES)."""
+    """На конец каждого бакета считаем % активных."""
     state: Dict[str, str] = dict(baseline)
     idx = 0
     n = len(events)
     out: List[Tuple[str, float]] = []
-
     if total_robots <= 0:
         return [(t.isoformat(), 0.0) for t in axis]
-
     for bucket_end in axis:
         while idx < n and events[idx][2] <= bucket_end:
             rid, status, _ts = events[idx]
@@ -141,39 +131,56 @@ def _carry_forward_active_counts(
         out.append((bucket_end.isoformat(), pct))
     return out
 
-
-# === публикации ===
-async def publish_robot_activity_series_from_history(
-    session: AsyncSession,
-    warehouse_id: str,
-    *,
-    force: bool = False,
-) -> None:
-    """
-    Публикуем 7 точек по 10 минут, считая активность на конец текущего бакета.
-    Правило частоты: не чаще 1 раза в 10 минут С МОМЕНТА ПОСЛЕДНЕЙ ОТПРАВКИ (якорь — первый снапшот при подключении).
-    """
-    bus = await get_bus_for_current_loop()
+# ========== builder: первый снапшот в конкретный сокет ==========
+async def build_robot_activity_series_payload(session: AsyncSession, warehouse_id: str) -> dict:
     now_srv = datetime.now(timezone.utc)
-
-    # --- ГЛАВНОЕ: ограничение частоты относительно последнего отправленного сообщения ---
-    next_allowed = _next_allowed_emit.get(warehouse_id)
-    if not force and next_allowed is not None and now_srv < next_allowed:
-        # ранний вызов (например, воркер или событие истории) — пропускаем
-        return
-
-    # текущий край бакета для построения оси
-    bucket_end = _bucket_end_of(now_srv, BUCKET_SEC)
-
-    # Доп. защита от дублей в один и тот же бакет (если вызовов несколько одновременно)
-    if not force and _last_bucket_sent.get(warehouse_id) == bucket_end:
-        return
-
-    # Ось времени до текущего края бакета
     axis = _axis_from_last(now_srv, POINTS_COUNT, BUCKET_SEC)
     start, end = axis[0], axis[-1]
 
-    # Собираем данные истории
+    last_ts = await _latest_history_timestamp(session, warehouse_id)
+    if last_ts is None:
+        series = [(t.isoformat(), 0.0) for t in axis]
+        return {
+            "type": "robot.activity_series",
+            "warehouse_id": warehouse_id,
+            "window_min": WINDOW_MIN,
+            "bucket_sec": BUCKET_SEC,
+            "series": series,
+            "ts": end.isoformat(),
+            "total_robots": 0,
+        }
+
+    total = await _total_robots(session, warehouse_id)
+    baseline = await _baseline_statuses_before(session, warehouse_id, start)
+    events = await _events_in_window(session, warehouse_id, start, end)
+    series = _carry_forward_active_counts(axis, baseline, events, total)
+    return {
+        "type": "robot.activity_series",
+        "warehouse_id": warehouse_id,
+        "window_min": WINDOW_MIN,
+        "bucket_sec": BUCKET_SEC,
+        "series": series,
+        "ts": end.isoformat(),
+        "total_robots": total,
+    }
+
+# ========== публикация: только из воркера, ровно по краям бакетов ==========
+async def publish_robot_activity_series_from_history(
+    session: AsyncSession,
+    warehouse_id: str,
+) -> None:
+    """Публикуем 7 точек по 10 минут, на конец текущего бакета. Без Redis-троттлинга."""
+    now_srv = datetime.now(timezone.utc)
+    bus = await get_bus_for_current_loop()
+
+    # край бакета (защита от дублей в рамках процесса)
+    bucket_end = _bucket_end_of(now_srv, BUCKET_SEC)
+    if _last_bucket_sent.get(warehouse_id) == bucket_end:
+        return
+
+    axis = _axis_from_last(now_srv, POINTS_COUNT, BUCKET_SEC)
+    start, end = axis[0], axis[-1]
+
     last_ts = await _latest_history_timestamp(session, warehouse_id)
     if last_ts is None:
         series = [(t.isoformat(), 0.0) for t in axis]
@@ -183,11 +190,10 @@ async def publish_robot_activity_series_from_history(
             "window_min": WINDOW_MIN,
             "bucket_sec": BUCKET_SEC,
             "series": series,
-            "ts": end.isoformat(),      # метка = конец текущего бакета
+            "ts": end.isoformat(),
             "total_robots": 0,
         })
         _last_bucket_sent[warehouse_id] = bucket_end
-        _next_allowed_emit[warehouse_id] = now_srv + timedelta(seconds=BUCKET_SEC)
         return
 
     total = await _total_robots(session, warehouse_id)
@@ -200,17 +206,13 @@ async def publish_robot_activity_series_from_history(
         "warehouse_id": warehouse_id,
         "window_min": WINDOW_MIN,
         "bucket_sec": BUCKET_SEC,
-        "series": series,              # длина = 7
-        "ts": end.isoformat(),         # «текущее» время — конец текущего бакета
+        "series": series,
+        "ts": end.isoformat(),
         "total_robots": total,
     })
-
-    # фиксируем последний отправленный бакет и следующий разрешённый момент
     _last_bucket_sent[warehouse_id] = bucket_end
-    _next_allowed_emit[warehouse_id] = now_srv + timedelta(seconds=BUCKET_SEC)
 
-
-# === выбор активных складов ===
+# ========== выбор активных складов ==========
 async def _get_active_warehouses_by_ws() -> List[str]:
     """Список складов с активными WS-подписчиками (API-режим)."""
     if manager is None:
@@ -221,28 +223,25 @@ async def _get_active_warehouses_by_ws() -> List[str]:
     except Exception:
         return []
 
-
 async def _get_active_warehouses_by_db(session: AsyncSession) -> List[str]:
     """Список складов, по которым есть история роботов (worker-режим)."""
     rows = await session.execute(select(distinct(RobotHistory.warehouse_id)))
     return [wid for (wid,) in rows.all() if wid]
 
-
-# === вспомогательная задержка до следующего края бакета (для красивой оси, но частоту диктует _next_allowed_emit) ===
+# ========== синхрон с краями бакетов ==========
 async def _sleep_until_next_bucket() -> None:
     now = datetime.now(timezone.utc)
     next_edge = _floor(now, BUCKET_SEC) + timedelta(seconds=BUCKET_SEC)
     await asyncio.sleep((next_edge - now).total_seconds())
 
-
-# === фоновая задача ===
+# ========== фоновая задача (worker) ==========
 async def continuous_robot_activity_history_streamer(
     interval: float = 600,
     use_ws_rooms: bool = False,
 ) -> None:
     """
-    Публикует 7 последних 10-минутных точек активности.
-    Выравниваемся по бакетам для оси, а ЧАСТОТА РЕАЛЬНЫХ ОТПРАВОК контролируется _next_allowed_emit.
+    Публикует 7 последних 10-минутных точек строго по краям бакетов.
+    НИКАКИХ публикаций из API/по событиям — только этот стример.
     """
     print(f"🚀 continuous_robot_activity_history_streamer(interval={interval}, use_ws_rooms={use_ws_rooms})")
     try:
@@ -264,23 +263,16 @@ async def continuous_robot_activity_history_streamer(
                             await publish_robot_activity_series_from_history(session, wh)
             except Exception as inner_err:
                 print(f"❌ continuous_robot_activity_history_streamer inner error: {inner_err}")
-            # следующий тик — на край бакета (для ровной оси); реальная отправка может быть подавлена квотой
             await _sleep_until_next_bucket()
     except asyncio.CancelledError:
         print("🛑 continuous_robot_activity_history_streamer cancelled")
     except Exception as e:
         print(f"🔥 continuous_robot_activity_history_streamer fatal error: {e}")
 
-
-# === точечное обновление после записи в RobotHistory ===
+# ========== событие истории (отключено, чтобы не было хаоса) ==========
 async def publish_robot_activity_on_history_event(session: AsyncSession, history_id: str) -> None:
     """
-    Вызывается при записи нового события RobotHistory.
-    Публикации «внутри» 10-минутного окна после последней отправки не будет — сработает по достижении окна.
+    Раньше здесь публиковали апдейт при каждом событии истории.
+    Теперь — НЕ публикуем ничего (поток идёт строго раз в 10 минут из воркера).
     """
-    row = await session.execute(
-        select(RobotHistory.warehouse_id).where(RobotHistory.id == history_id)
-    )
-    wh: Optional[str] = row.scalar_one_or_none()
-    if wh:
-        await publish_robot_activity_series_from_history(session, wh)
+    return
