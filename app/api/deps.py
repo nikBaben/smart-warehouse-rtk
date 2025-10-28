@@ -2,7 +2,6 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 # Repositories
@@ -68,8 +67,8 @@ async def get_auth_service(session: AsyncSession = Depends(get_session)) -> Auth
     user_service = UserService(session)
     return AuthService(keycloak_service, user_service)
 
-def get_user_service(repo: UserRepository = Depends(get_user_repo)) -> UserService:
-    return UserService(repo)
+def get_user_service(userRepo:UserRepository = Depends(get_user_repo), kkidUserRepo: KkidUserRepository = Depends(get_kkid_user_repo)) -> UserService:
+    return UserService(userRepo, kkidUserRepo)
 
 def get_keycloak_service() -> KeycloakService:
     return KeycloakService()

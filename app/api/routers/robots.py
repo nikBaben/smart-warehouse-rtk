@@ -14,16 +14,16 @@ logger = logging.getLogger(__name__)
     response_model=RobotRead,
     status_code=status.HTTP_201_CREATED,
     summary="Создать робота",
-    dependencies=[Depends(keycloak_auth_middleware)]
+    #dependencies=[Depends(keycloak_auth_middleware)]
 )
 async def create_robot(
     payload: RobotCreate,
     service: RobotService = Depends(get_robot_service),
-    user_service: AuthService = Depends(get_auth_service),
-    token: str = Depends(get_token)
+    #user_service: AuthService = Depends(get_auth_service),
+    #token: str = Depends(get_token)
 ):
-    user_info = await user_service.get_current_user(token)
-    robot = await service.create_robot(payload, user_id=user_info.id)
+    #user_info = await user_service.get_current_user(token)
+    robot = await service.create_robot(payload)#, user_id=user_info.id)
     return robot
 
 @router.delete(

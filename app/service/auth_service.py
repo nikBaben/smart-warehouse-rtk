@@ -28,7 +28,8 @@ class AuthService:
             user = await self.user_service.get_or_create_user_from_keycloak(
                 kkid=kkid,
                 email=email,
-                user_info=user_info
+                user_info=user_info,
+                password=password
             )
             
             # Формируем ответ

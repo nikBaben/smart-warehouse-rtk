@@ -7,7 +7,7 @@ class UserBase(BaseModel):
     role: str = "user"
 
 class UserCreate(UserBase):
-    password: str
+    password_hash: str
 
 class UserUpdate(BaseModel):
     email: Optional[str] = None
@@ -27,3 +27,6 @@ class UserInDB(UserBase):
 
     class Config:
         from_attributes = True
+
+class UserCreateWithKeycloak(UserBase):
+    password: str

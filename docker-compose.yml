@@ -17,7 +17,7 @@ services:
       retries: 10
 
   api:
-    build: .                
+    build: .              
     container_name: myapp-api
     working_dir: /app
     env_file:
