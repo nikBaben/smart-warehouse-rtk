@@ -1,7 +1,7 @@
-import axios from 'axios'
+import api from '@/api/axios'
 import { useEffect, useState } from 'react'
-import { useUserStore } from '../../store/useUserStore.tsx'
-import { useWarehouseStore } from '../../store/useWarehouseStore.tsx'
+import { useUserStore } from '@/store/useUserStore.tsx'
+import { useWarehouseStore } from '@/store/useWarehouseStore.tsx'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -61,6 +61,10 @@ function ListPage() {
 	//-----ОБРАБОТКА СОСТОЯНИЙ-----
 	const { user } = useUserStore()
 
+	
+	const [openAdd, setOpenAdd] = useState(false)
+	const [openEdit, setOpenEdit] = useState(false)
+
 	const {
 		warehouses,
 		loading,
@@ -92,13 +96,43 @@ function ListPage() {
 		current_position: '',
 	})
 
-	/* 	const [loading, setLoading] = useState(false) */
+	const getRobotStatus = (status: string) => {
+		switch (status) {
+			case 'idle':
+				return 'активен'
+			case 'scanning':
+				return 'сканирует'
+			case 'charging':
+				return 'зарядка'
+			default:
+				return 'неизвестен'
+		}
+	}
+
+	const getStatusName = (status: string) => {
+		switch (status) {
+			case 'ok':
+				return 'ОК'
+			case 'low':
+				return 'низкий остаток'
+			case 'critical':
+				return 'критично'
+			default:
+				return 'неизвестен'
+		}
+	}
+
+	const [loadingInfo, setLoadingInfo] = useState(false)
 	/* 	const [error, setError] = useState<string | null>(null) */
 
 	let denyAdminAccess = !(user?.role === 'operator')
 
 	//-----ЗАГРУЗКА СПИСКА СКЛАДОВ-----
 	useEffect(() => {
+		fetchWarehouses()
+		setSelectedWarehouse(null)
+	}, [])
+/* 	useEffect(() => {
 		if (!token) {
 			console.warn('Токен отсутствует — пользователь не авторизован')
 			alert('Токен отсутствует — пользователь не авторизован')
@@ -106,7 +140,7 @@ function ListPage() {
 		}
 		fetchWarehouses(token)
 		setSelectedWarehouse(null)
-	}, [token])
+	}, [token]) */
 
 	//-----СИНХРОНИЗАЦИЯ ДАННЫХ ПРИ ВЫБОРЕ СКЛАДА-----
 	useEffect(() => {
@@ -121,6 +155,8 @@ function ListPage() {
 
 	//-----ВЫБОР СКЛАДА-----
 	const handleSelectWarehouse = async (warehouse: Warehouse) => {
+		setLoadingInfo(true)
+		
 		if (selectedWarehouse?.id === warehouse.id) {
 			setSelectedWarehouse(null)
 			setRobots([])
@@ -134,20 +170,17 @@ function ListPage() {
 
 		try {
 			const [robotsRes, productsRes] = await Promise.all([
-				axios.get(
-					`https://dev.rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${warehouse.id}`
-				),
-				axios.get(
-					`https://dev.rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${warehouse.id}`,
-					{ headers: { Authorization: `Bearer ${token}` } }
-				),
+				api.get(`/robot/get_robots_by_warehouse_id/${warehouse.id}`),
+				api.get(`/products/get_products_by_warehouse_id/${warehouse.id}`),
 			])
-
 			setRobots(robotsRes.data)
 			setProducts(productsRes.data)
 		} catch (err) {
 			console.error('Ошибка при загрузке данных склада:', err)
 			toast.error('Не удалось получить данные склада')
+		}
+		finally{
+			setLoadingInfo(false)
 		}
 	}
 
@@ -160,19 +193,13 @@ function ListPage() {
 				warehouse_id: selectedWarehouse.id,
 			}
 
-			const response = await axios.post(
-				'https://dev.rtk-smart-warehouse.ru/api/v1/robot',
-				payload,
-				{ headers: { 'Content-Type': 'application/json' } }
-			)
+			const response = await api.post('/robot', payload)
 
 			console.log('Робот успешно добавлен:', response.data)
 			toast.success(`Робот успешно добавлен на склад ${selectedWarehouse.name}`)
 
 			// обновляем список роботов для текущего склада
-			const robotsResponse = await axios.get(
-				`https://dev.rtk-smart-warehouse.ru/api/v1/robot/get_robots_by_warehouse_id/${selectedWarehouse.id}`
-			)
+			const robotsResponse = await api.get(`/robot/get_robots_by_warehouse_id/${selectedWarehouse.id}`)
 			setRobots(robotsResponse.data)
 		} catch (error) {
 			console.error('Ошибка при добавлении робота:', error)
@@ -194,8 +221,8 @@ function ListPage() {
 				[field]: editedWarehouse[field],
 			}
 
-			const response = await axios.patch(
-				`https://dev.rtk-smart-warehouse.ru/api/v1/warehouse/${selectedWarehouse.id}`,
+			const response = await api.patch(
+				`/warehouse/${selectedWarehouse.id}`,
 				updatedData,
 				{ headers: { 'Content-Type': 'application/json' } }
 			)
@@ -242,31 +269,16 @@ function ListPage() {
 				warehouse_id: selectedWarehouse.id,
 			}
 
-			const response = await axios.post(
-				'https://dev.rtk-smart-warehouse.ru/api/v1/products',
-				payload,
-				{
-					headers: {
-						Authorization: `Bearer ${token}`,
-						'Content-Type': 'application/json',
-					},
-				}
-			)
+			const response = await api.post('/products', payload)
 
 			console.log('Товар добавлен:', response.data)
 			toast.success('Товар успешно добавлен!')
 
 			//обновляем список товаров текущего склада
-			const updatedProducts = await axios.get(
-				`https://dev.rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`,
-				{
-					headers: {
-						Authorization: `Bearer ${token}`,
-						'Content-Type': 'application/json',
-					},
-				}
-			)
+			const updatedProducts = await api.get(`/products/get_products_by_warehouse_id/${selectedWarehouse.id}`)
 			setProducts(updatedProducts.data)
+
+			setOpenAdd(false)
 
 			//очистка формы
 			setFormData({
@@ -300,11 +312,15 @@ function ListPage() {
 		})
 	}
 
+	const handleOpenProduct = (product: WhProduct) => {
+		setEditedProduct(product)
+		setOpenEdit(true)
+	}
+
 	const handleUpdateProduct = async (e: React.FormEvent) => {
 		e.preventDefault()
 		if (!selectedWarehouse || !editedProduct) return
 
-		/* setLoading(true) */
 		try {
 			const payload = {
 				name: editedProduct.name,
@@ -316,30 +332,16 @@ function ListPage() {
 				warehouse_id: selectedWarehouse.id,
 			}
 
-			await axios.patch(
-				`https://dev.rtk-smart-warehouse.ru/api/v1/products/${editedProduct.id}`,
-				payload,
-				{ headers: { 'Content-Type': 'application/json' } }
+			await api.patch(`/products/${editedProduct.id}`, payload)
+			toast.success('Изменения успешно сохранены!')
+			const updatedProducts = await api.get(
+				`/products/get_products_by_warehouse_id/${selectedWarehouse.id}`
 			)
-
-			alert('Изменения успешно сохранены!')
-
-			// обновляем список товаров
-			const updatedProducts = await axios.get(
-				`https://dev.rtk-smart-warehouse.ru/api/v1/products/get_products_by_warehouse_id/${selectedWarehouse.id}`,
-				{
-					headers: {
-						Authorization: `Bearer ${token}`,
-					},
-				}
-			)
-
 			setProducts(updatedProducts.data)
+			setOpenEdit(false)
 		} catch (error) {
 			console.error('Ошибка при обновлении товара:', error)
 			toast.error('Не удалось обновить товар')
-		} finally {
-			/* setLoading(false) */
 		}
 	}
 
@@ -388,8 +390,8 @@ function ListPage() {
 											className={`flex justify-between items-center bg-[#F2F3F4] rounded-[10px] max-h-[60px] px-[10px] py-[10px] cursor-pointer transition-all border-[2px]
 													${
 														selectedWarehouse?.name === wh.name
-															? 'border-[2px] border-[#7700FF] shadow-[0_0_10px_rgba(119,0,255,0.3)]'
-															: 'border border-transparent hover:border-[2px] hover:border-[#7700FF33] hover:shadow-[0_0_10px_rgba(119,0,255,0.3)]'
+															? 'border-[2px] border-[#7700FF]'
+															: 'border border-transparent hover:border-[2px] hover:border-[#7700FF33]'
 													}`}
 										>
 											<div className='flex items-center'>
@@ -399,7 +401,7 @@ function ListPage() {
 											</div>
 											<div className='text-right space-y-0'>
 												<div className='text-[14px] font-normal text-[#5A606D]'>
-													город: {wh.address}
+													адрес: {wh.address}
 												</div>
 												<div className='text-[14px] font-normal text-[#5A606D]'>
 													текущее количество товаров: {wh.products_count}
@@ -489,7 +491,7 @@ function ListPage() {
 										</Label>
 										<div className='flex w-full items-center gap-2'>
 											<Input
-												type='text'
+												type='number'
 												id='max_products'
 												name='max_products'
 												className='main-input'
@@ -530,23 +532,45 @@ function ListPage() {
 												/>
 											</Button>
 										</div>
-
-										<div className='max-h-[300px] overflow-y-auto space-y-2'>
-											{robots.map(robot => (
-												<div
-													key={robot.id}
-													className='flex justify-between bg-[#F2F3F4] max-h-[52px] rounded-[10px] px-[10px] py-[10px] items-center'
-												>
-													<span className='text-[18px] font-medium text-black'>
-														{robot.id}
-													</span>
-													<div className='text-right text-[#5A606D] text-[14px]'>
-														<div>заряд: {robot.battery_level}%</div>
-														<div>статус: {robot.status}</div>
+										{loadingInfo ? (
+											<div className='space-y-2'>
+												{[...Array(4)].map((_, i) => (
+													<div
+														key={i}
+														className='flex justify-between items-center bg-[#F2F3F4] rounded-[10px] px-[10px] py-[10px]'
+													>
+														<div className='flex items-center gap-3'>
+															<Skeleton className='bg-[#CDCED2] h-[20px] w-[120px] rounded-md' />
+														</div>
+														<div className='text-right space-y-1'>
+															<Skeleton className='bg-[#CDCED2] h-[14px] w-[180px] rounded-md' />
+															<Skeleton className='bg-[#CDCED2] h-[14px] w-[200px] rounded-md' />
+														</div>
 													</div>
-												</div>
-											))}
-										</div>
+												))}
+											</div>
+										) : error ? (
+											<div className='flex items-center justify-center font-medium text-center h-full text-[#9699A3] text-[24px]'>
+												не удалось получить данные о складах
+											</div>
+										) : (
+											<div className='max-h-[240px] overflow-y-auto space-y-2'>
+												{robots.map(robot => (
+													<div
+														key={robot.id}
+														className='flex justify-between bg-[#F2F3F4] max-h-[52px] rounded-[10px] px-[10px] py-[10px] items-center'
+													>
+														<span className='text-[18px] font-medium text-black'>
+															{robot.id}
+														</span>
+														<div className='text-right text-[#5A606D] text-[14px]'>
+															<div>заряд: {robot.battery_level}%</div>
+															<div>статус: {getRobotStatus(robot.status)}</div>
+														</div>
+													</div>
+												))}
+											</div>
+										)}
 									</div>
 
 									{/* ==== Товары ==== */}
@@ -555,7 +579,7 @@ function ListPage() {
 											<span className='text-[20px] font-medium'>
 												Товары на складе
 											</span>
-											<Dialog>
+											<Dialog open={openAdd} onOpenChange={setOpenAdd}>
 												<DialogTrigger asChild>
 													<Button
 														variant='outline'
@@ -563,6 +587,7 @@ function ListPage() {
 														aria-label='Add Product'
 														className='small-add-button'
 														disabled={denyAdminAccess}
+														onClick={() => setOpenAdd(true)}
 													>
 														<AddSmall
 															style={{ width: '22px', height: '22px' }}
@@ -688,29 +713,47 @@ function ListPage() {
 												</DialogContent>
 											</Dialog>
 										</div>
-
-										<div className='!max-h-[200px] overflow-y-auto space-y-2'>
-											{products.map(p => (
-												<Dialog>
-													<DialogTrigger
-														className='w-full'
-														onClick={() => setEditedProduct(p)}
+										{loadingInfo ? (
+											<div className='space-y-2'>
+												{[...Array(4)].map((_, i) => (
+													<div
+														key={i}
+														className='flex justify-between items-center bg-[#F2F3F4] rounded-[10px] px-[10px] py-[10px]'
 													>
-														<Button
-															aria-label='Добавить товар'
-															className='product-button'
-														>
-															<div key={p.name} className='product-button-elem'>
-																<span className='text-[18px] font-medium text-black'>
-																	{p.name}
-																</span>
-																<div className='text-right text-[#5A606D] text-[14px]'>
-																	<div>статус: {p.status}</div>
-																	<div>количество: {p.stock} шт</div>
-																</div>
+														<div className='flex items-center gap-3'>
+															<Skeleton className='bg-[#CDCED2] h-[20px] w-[120px] rounded-md' />
+														</div>
+														<div className='text-right space-y-1'>
+															<Skeleton className='bg-[#CDCED2] h-[14px] w-[180px] rounded-md' />
+															<Skeleton className='bg-[#CDCED2] h-[14px] w-[200px] rounded-md' />
+														</div>
+													</div>
+												))}
+											</div>
+										) : error ? (
+											<div className='flex items-center justify-center font-medium text-center h-full text-[#9699A3] text-[24px]'>
+												не удалось получить данные о складах
+											</div>
+										) : (
+											<div className='!max-h-[240px] overflow-y-auto space-y-2'>
+												{products.map(p => (
+													<Button
+														key={p.id}
+														onClick={() => handleOpenProduct(p)}
+														className='product-button'
+													>
+														<div className='product-button-elem'>
+															<span className='text-[18px] font-medium text-black'>
+																{p.name}
+															</span>
+															<div className='text-right text-[#5A606D] text-[14px]'>
+																<div>статус: {getStatusName(p.status)}</div>
+																<div>количество: {p.stock} шт</div>
 															</div>
-														</Button>
-													</DialogTrigger>
+														</div>
+													</Button>
+												))}
+												<Dialog open={openEdit} onOpenChange={setOpenEdit}>
 													<DialogContent className='bg-[#F4F4F5] !p-[20px] !w-[558px]'>
 														<form onSubmit={handleUpdateProduct}>
 															<DialogHeader>
@@ -718,7 +761,7 @@ function ListPage() {
 																	Просмотр и редактирование
 																</DialogTitle>
 															</DialogHeader>
-															<div className='grid gap-4'>
+															<div className='grid gap-3'>
 																<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
 																	<Label
 																		className='section-title'
@@ -808,7 +851,7 @@ function ListPage() {
 																		className='section-title'
 																		htmlFor='current_position'
 																	>
-																		Где расположен товар?
+																		Расположение товара
 																	</Label>
 																	<Input
 																		className='dialog-input-placeholder-text'
@@ -821,7 +864,7 @@ function ListPage() {
 																	/>
 																</div>
 															</div>
-															<DialogFooter className='mt-2'>
+															<DialogFooter className='mt-3'>
 																<DialogClose asChild>
 																	<Button className='w-[50%] items-center rounded-[10px] text-[18px] text-white font-medium bg-[#FF4F12] cursor-pointer transition-all hover:brightness-90'>
 																		<X className='!h-5 !w-5' />
@@ -840,8 +883,8 @@ function ListPage() {
 														</form>
 													</DialogContent>
 												</Dialog>
-											))}
-										</div>
+											</div>
+										)}
 									</div>
 								</>
 							)}

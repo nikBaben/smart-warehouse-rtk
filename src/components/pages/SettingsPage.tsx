@@ -130,9 +130,13 @@ function SettingsPage(){
 										</span>
 									</div>
 								</div>
-								<span className='flex items-center'>{user?.role === 'operator'? 'оператор склада': 'пользователь'}</span>
+								<span className='flex items-center'>
+									{user?.role === 'operator'
+										? 'оператор склада'
+										: 'пользователь'}
+								</span>
 							</div>
-							<div className='bg-white rounded-[15px] p-[10px] h-full flex flex-col'>
+							<div className='bg-white rounded-[15px] p-[10px] flex flex-col'>
 								<h2 className='font-medium text-[24px] mb-[15px]'>
 									Профиль и настройки
 								</h2>
@@ -160,7 +164,7 @@ function SettingsPage(){
 									<div className='flex flex-col'>
 										<Label className='section-title'>Логин</Label>
 										<Label className='input-description'>
-											Укажите свою почту или номер телефона, чтобы мы могли Вас
+											Укажите свою почту, чтобы мы могли Вас
 											идентифицировать
 										</Label>
 										<Input
@@ -178,7 +182,7 @@ function SettingsPage(){
 											onValueChange={value => handleChange('role', value)}
 										>
 											<SelectTrigger className='w-full !h-[52px]'>
-												<SelectValue defaultValue={form.role}/>
+												<SelectValue defaultValue={form.role} />
 											</SelectTrigger>
 											<SelectContent>
 												<SelectItem value='operator'>Оператор</SelectItem>
@@ -227,14 +231,14 @@ function SettingsPage(){
 											Сохранить
 										</Button>
 									</div>
-									<div className='flex items-center justify-center pt-[8px]'>
-										<img
-											src='/src/assets/images/warehouse-img 1.svg'
-											alt='Warehouse'
-											className='w-[400px] h-[266px]'
-										/>
-									</div>
 								</div>
+							</div>
+							<div className='flex items-center justify-center pt-[8px]'>
+								<img
+									src='/src/assets/images/warehouse-img 1.svg'
+									alt='Warehouse'
+									className='w-[435px] h-[290px]'
+								/>
 							</div>
 						</section>
 						<section className='flex flex-col col-span-6'>

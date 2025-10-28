@@ -1,4 +1,4 @@
-import axios from 'axios'
+import api from '@/api/axios'
 import { useState } from 'react'
 import {
 	Dialog,
@@ -17,58 +17,60 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { useUserStore } from '../../store/useUserStore.tsx'
+import { useUserStore } from '@/store/useUserStore.tsx'
 
-export function AddWarehouseDialog(){
-  const [formData, setFormData] = useState({
+export function AddWarehouseDialog() {
+
+	const [open, setOpen] = useState(false)
+
+	const [formData, setFormData] = useState({
 		name: '',
 		address: '',
 		max_products: '',
 	})
-  
+
 	const { user } = useUserStore()
-  const [loading, setLoading] = useState(false)
-  let denyAdminAccess = !(user?.role === 'operator')
+	const [loading, setLoading] = useState(false)
+	let denyAdminAccess = !(user?.role === 'operator')
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const{name,value} = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-  }
+	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const { name, value } = e.target
+		setFormData(prev => ({ ...prev, [name]: value }))
+	}
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
+	const handleSubmit = async (e: React.FormEvent) => {
+		e.preventDefault()
+		setLoading(true)
+		
+		try {
+			const payload = {
+				name: formData.name,
+				address: formData.address,
+				max_products: Number(formData.max_products),
+			}
 
-    try {
-    const payload = {
-			name: formData.name,
-			address: formData.address,
-			max_products: Number(formData.max_products),
-		}
-
-			const response = await axios.post(
-				'https://dev.rtk-smart-warehouse.ru/api/v1/warehouse',
-				payload,
-				{ headers: { 'Content-Type': 'application/json' } }
-			)
+			const response = await api.post('/warehouse',payload)
 
 			console.log('Склад успешно добавлен:', response.data)
 			toast.success(`Склад ${formData.name} успешно добавлен`)
-			setFormData({ name: '', address: '', max_products: '', })
+			setOpen(false)
+			setFormData({ name: '', address: '', max_products: '' })
 		} catch (error) {
 			console.error('Ошибка при добавлении склада:', error)
 			toast.error('Ошибка при добавлении склада')
 		} finally {
 			setLoading(false)
 		}
-  }
+	}
 
-  return (
-		<Dialog>
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger asChild>
-				<Button 
-					className='add-warehouse-button' 
-					disabled = {denyAdminAccess}>
+				<Button
+					className='add-warehouse-button'
+					disabled={denyAdminAccess}
+					onClick={() => setOpen(true)}
+				>
 					Добавить склад
 					<AddLarge fill='#7700FF' className='!w-[20px] !h-[20px]' />
 				</Button>

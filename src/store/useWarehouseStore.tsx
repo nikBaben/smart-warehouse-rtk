@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import axios from 'axios'
+import api from '@/api/axios'
 
 export type Warehouse = {
 	id: string
@@ -14,7 +14,8 @@ type WarehouseStore = {
 	loading: boolean
 	error: string | null
 	selectedWarehouse: Warehouse | null
-	fetchWarehouses: (token: string) => Promise<void>
+	/* fetchWarehouses: (token: string) => Promise<void> */
+	fetchWarehouses: () => Promise<void>
 	setSelectedWarehouse: (wh: Warehouse | null) => void
 	updateWarehouse: (warehouse: Warehouse) => void
 }
@@ -25,20 +26,24 @@ export const useWarehouseStore = create<WarehouseStore>((set, get) => ({
 	error: null,
 	selectedWarehouse: null,
 
-	fetchWarehouses: async (token: string) => {
+	fetchWarehouses: async () => {
 		set({ loading: true, error: null })
 		try {
-			const res = await axios.get(
-				'https://dev.rtk-smart-warehouse.ru/api/v1/warehouses',
-				{
-					headers: { Authorization: `Bearer ${token}` },
-				}
-			)
+			const res = await api.get('/warehouses')
 			set({ warehouses: res.data, loading: false })
 		} catch (err) {
 			set({ error: 'Не удалось получить список складов', loading: false })
 		}
 	},
+/* 	fetchWarehouses: async (token: string) => {
+		set({ loading: true, error: null })
+		try {
+			const res = await api.get('/warehouses')
+			set({ warehouses: res.data, loading: false })
+		} catch (err) {
+			set({ error: 'Не удалось получить список складов', loading: false })
+		}
+	}, */
 
 	setSelectedWarehouse: wh => set({ selectedWarehouse: wh }),
 

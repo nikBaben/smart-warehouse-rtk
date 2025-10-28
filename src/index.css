@@ -38,12 +38,15 @@ div::-webkit-scrollbar {
 }
 div::-webkit-scrollbar-track {
   background: #FFFFFF;        /* цвет дорожки */
-  margin: 10px;
 }
 div::-webkit-scrollbar-thumb {
   background-color:#D1D1D1;    /* цвет плашки */
   border-radius: 30px;       /* закругления плашки */
   border: 3px solid white;
+}
+
+.table-scrollbar::-webkit-scrollbar-track {
+  margin: 10px;
 }
 
 .pagename-font{
@@ -97,7 +100,7 @@ div::-webkit-scrollbar-thumb {
 .product-button-elem{
   @apply flex items-center max-h-[52px] justify-between bg-[#F2F3F4] p-[10px] w-full rounded-[10px] text-[20px]
   transition-all duration-200 ease-in-out border-[2px]
-  border border-transparent hover:border-[2px] hover:border-[#7700FF];
+  border border-transparent hover:border-[2px] hover:border-[#7700FF33]
 }
 
 .input-description{
@@ -108,7 +111,7 @@ div::-webkit-scrollbar-thumb {
   @apply w-full h-[38px] cursor-pointer 
   border-[#CCCCCC] border-[2px] rounded-[10px] text-[20px] text-[#7700FF]
   flex items-center justify-between 
-  shadow-none
+  shadow
   transition-all duration-200 ease-in-out
   enabled:hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
   enabled:hover:border-[#7700FF];
@@ -138,10 +141,29 @@ div::-webkit-scrollbar-thumb {
 
 .select-warehouse{
   @apply w-auto h-[38px] cursor-pointer 
-  border-[#CCCCCC] border-[1px] rounded-[10px] text-[20px] text-[#7700FF]
+  border-[#CCCCCC] border-[2px] rounded-[10px] text-[20px] text-[#7700FF]
   flex items-center justify-between 
   bg-white shadow min-w-[220px]
   transition-all duration-200 ease-in-out
   enabled:hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
   enabled:hover:border-[#7700FF];
+}
+
+.cancel-button{
+  @apply w-[50%] items-center rounded-[10px] text-[18px] text-white font-medium bg-[#FF4F12] cursor-pointer transition-all hover:brightness-90
+}
+
+.confirm-button{
+  @apply w-[50%] rounded-[10px] text-[18px] text-white font-medium bg-[#7700FF] cursor-pointer transition-all hover:brightness-90
+}
+
+.toggle-button{
+  @apply w-[49%] rounded-[10px] text-[14px] transition-all shadow-none hover:shadow-[0_0_10px_rgba(119,0,255,0.2)]
+}
+
+.toggle-active{
+  @apply bg-[#7700FF] text-white
+}
+.toggle-inactive{
+  @apply bg-[#F7F0FF] text-[#7700FF]
 }

@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { Button } from "../ui/button";
 import CheckLarge from "@atomaro/icons/24/navigation/CheckLarge";
 import CloseLarge from "@atomaro/icons/24/navigation/CloseLarge";
+import { useUserStore } from '@/store/useUserStore'
 import Release from '@atomaro/icons/24/action/Release'
 import {
 	Dialog,
@@ -15,8 +16,10 @@ import {
 } from '@/components/ui/dialog'
 
 export function ExitDialogue(){
+	const { clearUser } = useUserStore()
   const handleExit = async () => {
 		localStorage.removeItem('token')
+		/* clearUser() */
     window.location.href = '/auth'
 	}
   return (

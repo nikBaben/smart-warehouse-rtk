@@ -1,12 +1,17 @@
-interface NotificationItem {
+import api from '@/api/axios'
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
+const token = localStorage.getItem('token')
+
+
+type NotificationItem = {
   title: string;
   subtitle: string;
   date: string;
   status: string;
   type?: "scan" | "forecast";
 }
-
-const notifications: NotificationItem[] = [
+/* const notifications: NotificationItem[] = [
   {
     title: "Результаты сканирования робота ID-432332",
     subtitle: "Apple IPhone 17 Pro Max",
@@ -56,9 +61,35 @@ const notifications: NotificationItem[] = [
     status: "новый статус: критический",
     type: "scan",
   },
-];
+]; */
+
 
 export function Notification(){
+  const [loading, setLoading] = useState(false)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+ 
+  const handleNotifications = async(token: string) => {
+    setLoading(true)
+    try{
+      const response = await api.get('/notifications')
+      setNotifications(response.data)
+    }
+    catch(error){
+      toast.error('Не удалось загрузить уведомления')
+    }
+    finally{
+      setLoading(false)
+    }
+  }
+
+  useEffect(()=>{
+    if (!token){
+      console.warn('Токен отсутствует — пользователь не авторизован')
+			alert('Токен отсутствует — пользователь не авторизован')
+      return
+    }
+    handleNotifications(token)
+  })
   return (
     <div className="bg-white rounded-[15px]">
       <div className="flex flex-col gap-[10px]">

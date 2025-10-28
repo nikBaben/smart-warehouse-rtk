@@ -8,7 +8,7 @@ import {
   Tooltip,
 } from "recharts";
 import { motion } from "framer-motion";
-import { useSocketStore } from '../../store/useSocketStore.tsx'
+import { useSocketStore } from '@/store/useSocketStore.tsx'
 
 export function RobotActivityChart(){
 	const { activitySeries } = useSocketStore()

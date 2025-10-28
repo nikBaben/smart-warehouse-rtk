@@ -1,4 +1,4 @@
-import axios from 'axios'
+import api from '@/api/axios'
 import { AxiosError } from 'axios'
 import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -21,8 +21,6 @@ function AuthPage() {
 	const [password, setPassword] = useState('')
 	const [loading, setLoading] = useState(false)
 
-	/* const [user, setUser] = useState<User[]>([]) */
-
 	const navigate = useNavigate()
 	const setUser = useUserStore(state => state.setUser)
 	const handleLogin = async () => {
@@ -30,13 +28,8 @@ function AuthPage() {
 
 		const token = localStorage.getItem('token')
 		const payload = { email, password }
-		try{
-			const response = await axios.post ('https://dev.rtk-smart-warehouse.ru/api/v1/auth/login', payload, {
-					headers: {
-						'Content-Type': 'application/json',
-					},
-				}
-			)
+		try {
+			const response = await api.post('/auth/login',payload)
 			localStorage.setItem('token', response.data.token)
 			const userData = response.data.user
 			const [first_name, last_name = ''] = userData.name.split(' ')
@@ -46,29 +39,26 @@ function AuthPage() {
 				first_name,
 				last_name,
 				role: userData.role,
-				email: userData.email
+				email: userData.email,
 			})
 			console.log(userData)
 			navigate('/')
-		}
-		catch(error){
+		} catch (error) {
 			const err = error as AxiosError<{ error?: string }>
 			console.error('Ошибка при логине:', err)
 			console.log('➡️ err.response:', err.response)
 			console.log('➡️ err.request:', err.request)
 			console.log('➡️ err.message:', err.message)
 			const message = err.response?.data?.error || 'Неизвестная ошибка'
-			
-			if (err.response){
+
+			if (err.response) {
 				toast.error('Ошибка при входе в аккаунт', {
-      	  description: message,
+					description: message,
 				})
-			}
-			else {
+			} else {
 				alert('Ошибка входа: Сервер недоступен или нет ответа')
-			}	
-		}
-		finally{
+			}
+		} finally {
 			setLoading(false)
 		}
 	}
@@ -123,7 +113,6 @@ function AuthPage() {
 							<div className='flex flex-col items-center justify-center'>
 								<Button
 									disabled={!email || !password || loading}
-
 									onClick={handleLogin}
 									className={`w-[365px] cursor-pointer h-[68px] rounded-[10px] text-[18px] leading-[24px] shadow-none ${
 										!email || !password
@@ -131,7 +120,7 @@ function AuthPage() {
 											: 'bg-[#7700FF] text-[#FFFFFF]'
 									}`}
 								>
-									{loading? 'Загрузка...' : 'Войти'}
+									{loading ? 'Загрузка...' : 'Войти'}
 								</Button>
 							</div>
 							<div className='flex flex-col items-center justify-center'>

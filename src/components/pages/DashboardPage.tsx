@@ -24,23 +24,27 @@ function DashboardPage(){
 	const { warehouses, selectedWarehouse, setSelectedWarehouse } = useWarehouseStore()
 	const { avgBattery, robotsData, scanned24h, criticalUnique, statusAvg } = useSocketStore()
 	const { readyState } = useWarehouseSocket(selectedWarehouse?.id ?? '')
+	
 	const getStatusName = (status: string) => {
 		switch (status) {
 			case 'ok':
 				return 'ОК'
 			case 'low':
-				return 'Низкий остаток'
+				return 'низкий остаток'
 			case 'critical':
-				return 'Критично'
+				return 'критично'
 			default:
-				return 'Неизвестен'
+				return 'неизвестен'
 		}
 	}
 
 	const { fetchWarehouses } = useWarehouseStore()
-	useEffect(()=>{
+/* 	useEffect(()=>{
 		if (token) fetchWarehouses(token)
-	},[token])
+	},[token]) */
+	useEffect(() => {
+		fetchWarehouses()
+	}, [])
   return (
 		<div className='flex bg-[#F4F4F5] min-h-screen'>
 			<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
@@ -68,15 +72,15 @@ function DashboardPage(){
 							</Select>
 						</div>
 						<div className='flex items-center space-x-5'>
-							<AddRobotProductDialog/>
+							<AddRobotProductDialog />
 							<UserAvatar />
 						</div>
 					</div>
 				</header>
 				<main className='flex-1 overflow-auto p-[10px]'>
 					<div className='grid grid-cols-12 gap-3 h-full'>
-						<section className='bg-white rounded-[10px] p-[6px] flex flex-col col-span-5'>
-							<h2 className='font-semibold text-[18px] mb-2'>Карта склада</h2>
+						<section className='bg-white rounded-[10px] p-[6px] pl-[12px] flex flex-col col-span-5'>
+							<h2 className='font-semibold text-[18px] mb-3'>Карта склада</h2>
 							<div className='flex-1 bg-[#F6F7F7] rounded-[10px]'></div>
 						</section>
 						<section className='col-span-7 gap-4 auto-rows-min space-y-[10px]'>
@@ -112,7 +116,9 @@ function DashboardPage(){
 										Ср. статус по складу
 									</h3>
 									<div className='flex flex-col items-center justify-between space-y-[-8px] pb-4'>
-										<p className='text-[28px] font-bold'>{getStatusName(statusAvg?.status || '')}</p>
+										<p className='text-[28px] font-bold'>
+											{getStatusName(statusAvg?.status || '')}
+										</p>
 										<p className='text-[10px] text-[#CCCCCC] font-light'>
 											{' '}
 											статистика{' '}
@@ -160,7 +166,7 @@ function DashboardPage(){
 								<h3 className='font-medium text-[18px]'>
 									Последние сканирования
 								</h3>
-								<ScanStoryTable/>
+								<ScanStoryTable />
 							</div>
 							<div className='bg-white rounded-[10px] pl-[10px] pt-[6px] pr-[10px] pb-[10px] col-span-2'>
 								<ForecastAI />
