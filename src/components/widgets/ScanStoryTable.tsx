@@ -10,14 +10,15 @@ import {
 import { cn } from '@/lib/utils'
 import { useSocketStore } from '@/store/useSocketStore'
 import { Spinner } from '@/components/ui/spinner'
+import { useWarehouseStore } from '@/store/useWarehouseStore'
 
 type TableRowData = {
 	scanned_at: string
 	name_article: string
 	stock: string
 	status: string
-	zone: string
-	robot: string
+	current_zone: string
+	robot_id: string
 }
 
 type Column<T> = {
@@ -29,37 +30,42 @@ type Column<T> = {
 
 export function ScanStoryTable() {
 	const { productScan } = useSocketStore()
+	const { selectedWarehouse } = useWarehouseStore()
 	const [scanHistory, setScanHistory] = useState<(typeof productScan)[]>([])
+
+	//очищаем таблицу при переключении между складами
+	useEffect(() => {
+		setScanHistory([])
+	}, [selectedWarehouse?.id])
 
 	//сохраняем последние 20 сканирований
 	useEffect(() => {
 		if (productScan) {
 			console.log('productScan:', productScan)
-			setScanHistory(prev => {
-				const updated = [productScan, ...prev]
-				return updated.slice(0, 20)
-			})
+			setScanHistory([productScan])
 		}
 	}, [productScan])
 
-	//преобразуем данные для таблицы
-	const tableData: TableRowData[] = (
-		scanHistory.flatMap(
+	// преобразуем данные для таблицы
+	const tableData: TableRowData[] = scanHistory
+		.flatMap(
 			scan =>
-				scan?.products.map(p => ({
-					scanned_at: new Date(p.scanned_at).toLocaleTimeString('ru-RU', {
+				scan?.scans.map(s => ({
+					scanned_at: new Date(s.scanned_at).toLocaleString('ru-RU', {
+						day: '2-digit',
+						month: '2-digit',
+						year: '2-digit',
 						hour: '2-digit',
 						minute: '2-digit',
-						second: '2-digit',
-					}),
-					robot: scan.robot_id,
-					zone: p.zone,
-					name_article: `${p.name} - ${p.article}`,
-					stock: p.stock,
-					status: p.status,
+					}).replace(',', ' -'),
+					robot_id: scan.robot_id,
+					current_zone: s.current_zone,
+					name_article: `${s.name} - ${s.article}`,
+					stock: String(s.stock),
+					status: s.status,
 				})) || []
-		) || []
-	).filter(Boolean)
+		)
+		.filter(Boolean)
 
 	// цвет статуса
 	const getStatusColor = (status: string) => {
@@ -75,7 +81,7 @@ export function ScanStoryTable() {
 		}
 	}
 
-  const getStatusName = (status: string) => {
+	const getStatusName = (status: string) => {
 		switch (status) {
 			case 'ok':
 				return 'ОК'
@@ -91,8 +97,8 @@ export function ScanStoryTable() {
 	// колонки таблицы
 	const columns: Column<TableRowData>[] = [
 		{ header: 'время проверки', accessor: 'scanned_at' },
-		{ header: 'id робота', accessor: 'robot' },
-		{ header: 'отдел склада', accessor: 'zone' },
+		{ header: 'id робота', accessor: 'robot_id' },
+		{ header: 'отдел склада', accessor: 'current_zone' },
 		{ header: 'название товара и артикул', accessor: 'name_article' },
 		{
 			header: 'количество',
@@ -116,8 +122,8 @@ export function ScanStoryTable() {
 	]
 
 	return (
-		<div className='overflow-hidden rounded-[5px] bg-[#FFFFFF]'>
-			<div className='max-h-[288px] overflow-y-auto'>
+		<div className='overflow-hidden rounded-[10px] bg-[#FFFFFF]'>
+			<div className='overflow-y-auto max-h-[198px]'>
 				<Table className='border-separate border-spacing-y-[5px] border-0 [&_*]:border-0 w-full !text-center'>
 					<TableHeader className='text-[10px]'>
 						<TableRow className='bg-[#FFFFFF] text-black'>

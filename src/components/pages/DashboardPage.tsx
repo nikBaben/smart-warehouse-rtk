@@ -10,6 +10,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { useWarehouseSocket } from '@/hooks/useWarehouseSocket.tsx'
 import { useSocketStore } from '@/store/useSocketStore.tsx'
 import { useWarehouseStore } from '@/store/useWarehouseStore.tsx'
+import { WarehouseMap } from '../widgets/WarehouseMap.tsx';
 
 import {
 	Select,
@@ -98,11 +99,13 @@ function DashboardPage(){
 						</div>
 					) : (
 						<div className='grid grid-cols-12 gap-3 h-full'>
-							<section className='bg-white rounded-[10px] p-[6px] pl-[12px] flex flex-col col-span-5'>
+							<section className='bg-white rounded-[10px] p-[10px] flex flex-col col-span-5'>
 								<h2 className='font-semibold text-[18px] mb-3'>Карта склада</h2>
-								<div className='flex-1 bg-[#F6F7F7] rounded-[10px]'></div>
+								<div className='flex-1 bg-transparent rounded-[10px] w-full'>
+									<WarehouseMap/>
+								</div>
 							</section>
-							<section className='col-span-7 gap-4 auto-rows-min space-y-[10px]'>
+							<section className='col-span-7 auto-rows-min space-y-[10px]'>
 								<div className='bg-transparent grid grid-cols-7 gap-3 col-span-2 w-full'>
 									{criticalUnique?.unique_articles ? (
 										<div className='spinner-load-container'>
@@ -163,14 +166,7 @@ function DashboardPage(){
 									</div>
 								</div>
 								<div className='bg-transparent grid grid-cols-7 gap-3 col-span-2 w-full h-[200px]'>
-									<div className='bg-white rounded-[10px] pt-[6px] pl-[10px] pr-[10px] pb-[10px] col-span-5'>
-										<h3 className='font-medium text-[18px] mb-1'>
-											График активности роботов
-										</h3>
-										<div className='h-[150px] bg-white rounded-[10px] flex items-center justify-center'>
-											<RobotActivityChart />
-										</div>
-									</div>
+									<RobotActivityChart/>
 									<div className='flex flex-col col-span-2 gap-3'>
 										<div className='dashboard-card !h-full'>
 											{robotsData?.robots ? (
@@ -207,7 +203,7 @@ function DashboardPage(){
 										</div>
 									</div>
 								</div>
-								<div className='bg-white rounded-[10px] pl-[10px] pt-[6px] pr-[10px] pb-[10px] col-span-2 h-[334px]'>
+								<div className='bg-white rounded-[10px] pl-[10px] pt-[6px] pr-[10px] col-span-2 h-[239px]'>
 									<h3 className='font-medium text-[18px]'>
 										Последние сканирования
 									</h3>

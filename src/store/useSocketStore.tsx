@@ -45,10 +45,14 @@ type RobotActivitySeries = {
 type Product = {
 	id: string
 	name: string
+	category: string
 	article: string
-	stock: string
+	current_row: number
+	current_shelf: number
+	shelf_num: string
+	current_zone: string
+	stock: number
 	status: string
-	zone: string
 	scanned_at: string
 }
 
@@ -57,10 +61,45 @@ type ProductScan = {
 	type: 'product.scan'
 	warehouse_id: string
 	robot_id: string
-	products: Product[]
+	scans: Product[]
 }
 
+type RobotPositions = {
+	type: 'robot.positions'
+	warehouse_id: string
+	robots: MapRobot[]
+}
 
+type MapRobot = {
+	robot_id: string
+	x: number
+	y: number
+	shelf: string
+	battery_level: number
+	status: string
+	updated_at: string
+}
+
+type ProductSnapshot = {
+	type: 'product.snapshot'
+	warehouse_id: string
+	items: MapProduct[]
+}
+
+type MapProduct = {
+	id: string
+	name: string
+	category: string
+	warehouse_id: string
+	current_zone: string
+	current_row: number
+	current_shelf: number
+	status: string
+	stock: number
+	min_stock: number
+	optimal_stock: number
+	created_at: string
+}
 
 type SocketMessage =
 	| RobotAvgBattery
@@ -70,6 +109,8 @@ type SocketMessage =
 	| InventoryStatusAvg
 	| RobotActivitySeries
 	| ProductScan
+	| RobotPositions
+	| ProductSnapshot
 
 interface SocketState {
 	avgBattery?: RobotAvgBattery
@@ -79,6 +120,8 @@ interface SocketState {
 	statusAvg?: InventoryStatusAvg
 	activitySeries?: RobotActivitySeries
 	productScan?: ProductScan
+	robotPositions?: RobotPositions
+	productSnapshot?: ProductSnapshot
 	updateData: (msg: SocketMessage) => void
 }
 
@@ -119,6 +162,12 @@ export const useSocketStore = create<SocketState>(set => ({
 				break
 			case 'product.scan':
 				set({ productScan: msg })
+				break
+			case 'robot.positions':
+				set({robotPositions: msg})
+				break
+			case 'product.snapshot':
+				set({productSnapshot: msg})
 				break
 			default:
 				console.warn('⚠️ Неизвестный тип сообщения:', msg)

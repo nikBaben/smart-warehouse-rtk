@@ -386,7 +386,7 @@ function ListPage() {
 			setContextRobot(null)
 			toast.success(`Робот ${robot.id} успешно удалён`)
 			//обновляем список роботов
-			fetchRobots()
+			await fetchRobots()
 		} catch (err) {
 			console.error(err)
 			toast.error(`Не удалось удалить робота ${robot.id}`)
@@ -409,7 +409,7 @@ function ListPage() {
 			setContextProduct(null)
 			toast.success(`Товар ${product.name} успешно удален`)
 			//обновляем список товаров
-			fetchProducts()
+			await fetchProducts()
 		} catch (err) {
 			console.error(err)
 			toast.error(`Не удалось удалить товар ${product.name}`)
