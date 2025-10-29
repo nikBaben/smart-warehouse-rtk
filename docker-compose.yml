@@ -6,6 +6,12 @@ services:
       POSTGRES_DB: myapp
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=500"
+      - "-c"
+      - "shared_buffers=2GB"
     ports:
       - "5433:5432"
     volumes:
@@ -36,11 +42,13 @@ services:
       - .env
     environment:
       # единое имя для вашего кода
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/myapp
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/myapp
       # роль и редис
       APP_ROLE: api
       USE_REDIS: "1"
       REDIS_DSN: redis://redis:6379/0
+      SQLALCHEMY_DISABLE_CEXT: "1"     # <<< ОБЯЗАТЕЛЬНО
+      USE_UVLOOP: "0"                  # на всякий случай
     depends_on:
       db:
         condition: service_healthy
@@ -52,7 +60,15 @@ services:
       - "8000:8000"
     expose:
       - "8000"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0 --port 8000
+      --proxy-headers
+      --forwarded-allow-ips='*'
+      --workers 3
+      --loop uvloop
+      --http httptools
+      --timeout-keep-alive 5
     volumes:
       - ./:/app
       - ./tools/websocat:/usr/local/bin/websocat:ro
@@ -62,25 +78,55 @@ services:
     build: .
     container_name: myapp-worker
     working_dir: /app
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/myapp
+      # ── соединения БД / Redis ────────────────────────────────────────────────
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/myapp
       REDIS_DSN: redis://redis:6379/0
-      # тонкий пул для воркера, чтобы не душить API
-      ROBOT_POOL_SIZE: "30"
-      ROBOT_MAX_OVERFLOW: "60"
+
+      # ── важные флаги для устойчивости логов/цикла ────────────────────────────
+      PYTHONUNBUFFERED: "1"          # мгновенная печать логов
+      PYTHONFAULTHANDLER: "1"        # stack traces при крэшах
+      USE_UVLOOP: "0"                # быстрее event loop, если доступен
+      SQLALCHEMY_DISABLE_CEXT: "1"
+
+      # ── параметры эмулятора (можно подстроить) ──────────────────────────────
+      ROBOT_TICK_INTERVAL: "0.5"     # чем меньше, тем «плавнее» (напр. 0.25)
+      POSITION_RATE_LIMIT_SEC: "0.25"
+      RESCAN_COOLDOWN_SEC: "30"
+      SCAN_DURATION_SEC: "6"
+
+      # ── пул SQLAlchemy для воркера (ИМЕННО ЭТИ используются кодом) ───────────
+      DB_POOL_SIZE: "40"
+      DB_MAX_OVERFLOW: "80"
+
+      # ⚠ Эти переменные в текущем коде НЕ используются (можешь удалить),
+      # оставляю, чтобы не ломать окружение:
+      ROBOT_POOL_SIZE: "300"
+      ROBOT_MAX_OVERFLOW: "600"
       ROBOT_POOL_TIMEOUT: "30.0"
-      # (опционально) ограничим параллелизм роботов на склад
       ROBOT_CONCURRENCY: "10"
+
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+
     command: python -m app.workers.runner
+
     volumes:
       - ./:/app
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('ok')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   # --- База данных для Keycloak ---
   keycloak-db:
