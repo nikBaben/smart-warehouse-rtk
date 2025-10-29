@@ -1,26 +1,33 @@
-# app/stream/robot_activity_history_streamer.py
 from __future__ import annotations
-
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple, Set
-from collections import defaultdict
-
-from sqlalchemy import select, func, and_
+from typing import Dict, List, Optional, Tuple
+from sqlalchemy import select, func, and_, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ws.ws_manager import EVENTS, manager
+# ✅ публикуем через фабрику шины под ТЕКУЩИЙ event loop
+from app.events.bus import get_bus_for_current_loop, COMMON_CH
 from app.db.session import async_session
 from app.models.robot import Robot
 from app.models.robot_history import RobotHistory
+
+# менеджер комнат есть только в API-процессе — пробуем подтянуть опционально
+try:
+    from app.ws.ws_manager import manager  # type: ignore
+except Exception:
+    manager = None  # type: ignore
 
 # --- какие статусы считаются активными ---
 ACTIVE_STATUSES = ("idle", "scanning")
 
 # --- параметры вывода ---
-POINTS_COUNT = 7                 # ровно 7 точек
-BUCKET_SEC = 600                 # 10 минут
+POINTS_COUNT = 7  # ровно 7 точек
+BUCKET_SEC = 600  # 10 минут
 WINDOW_MIN = POINTS_COUNT * (BUCKET_SEC // 60)  # 70 минут
+
+# --- внутреннее состояние ---
+_last_bucket_sent: Dict[str, datetime] = {}  # warehouse_id -> last emitted bucket_end (UTC)
+_next_allowed_emit: Dict[str, datetime] = {}  # warehouse_id -> next allowed publish (UTC)
 
 # === служебные утилиты ===
 def _ensure_utc(ts: datetime) -> datetime:
@@ -32,9 +39,7 @@ def _floor(ts: datetime, bucket_sec: int) -> datetime:
     return datetime.fromtimestamp(s - s % bucket_sec, tz=timezone.utc)
 
 def _axis_from_last(now_like: datetime, buckets: int, bucket_sec: int) -> List[datetime]:
-    """
-    Формируем ось времени из 'buckets' точек, заканчивающуюся бакетом, содержащим now_like.
-    """
+    """Формируем ось времени из 'buckets' точек, заканчивающуюся бакетом, содержащим now_like."""
     end = _floor(now_like, bucket_sec)
     start = end - timedelta(seconds=bucket_sec * (buckets - 1))
     t = start
@@ -43,6 +48,9 @@ def _axis_from_last(now_like: datetime, buckets: int, bucket_sec: int) -> List[d
         out.append(t)
         t += timedelta(seconds=bucket_sec)
     return out[-buckets:]
+
+def _bucket_end_of(ts: datetime, bucket_sec: int) -> datetime:
+    return _floor(ts, bucket_sec)
 
 # === запросы в БД ===
 async def _total_robots(session: AsyncSession, wh: str) -> int:
@@ -58,27 +66,16 @@ async def _latest_history_timestamp(session: AsyncSession, wh: str) -> Optional[
 async def _baseline_statuses_before(
     session: AsyncSession, wh: str, before_ts: datetime
 ) -> Dict[str, str]:
-    """
-    Находим ПОСЛЕДНИЙ статус каждого робота на складе ДО начала окна (strictly < before_ts).
-    Нужен для корректного переноса состояния в первый бакет.
-    """
-    # субзапрос: (robot_id, max(created_at)) для событий до before_ts
+    """Последний статус каждого робота ДО начала окна (strictly < before_ts)."""
     subq = (
         select(
             RobotHistory.robot_id.label("rid"),
             func.max(RobotHistory.created_at).label("mx"),
         )
-        .where(
-            and_(
-                RobotHistory.warehouse_id == wh,
-                RobotHistory.created_at < before_ts,
-            )
-        )
+        .where(and_(RobotHistory.warehouse_id == wh, RobotHistory.created_at < before_ts))
         .group_by(RobotHistory.robot_id)
         .subquery()
     )
-
-    # вытаскиваем статус на найденных mx
     q = (
         select(RobotHistory.robot_id, RobotHistory.status)
         .join(subq, and_(
@@ -93,11 +90,12 @@ async def _baseline_statuses_before(
     return out
 
 async def _events_in_window(
-    session: AsyncSession, wh: str, start_inclusive: datetime, end_inclusive: datetime
+    session: AsyncSession,
+    wh: str,
+    start_inclusive: datetime,
+    end_inclusive: datetime
 ) -> List[Tuple[str, str, datetime]]:
-    """
-    Возвращает список событий (robot_id, status, created_at) внутри окна [start, end], упорядоченный по времени.
-    """
+    """Возвращает (robot_id, status, created_at) внутри окна [start, end], по времени."""
     q = (
         select(RobotHistory.robot_id, RobotHistory.status, RobotHistory.created_at)
         .where(RobotHistory.warehouse_id == wh)
@@ -117,114 +115,141 @@ def _carry_forward_active_counts(
     events: List[Tuple[str, str, datetime]],
     total_robots: int,
 ) -> List[Tuple[str, float]]:
-    """
-    Строим значения для каждого бакета:
-    - берём baseline (последний статус < начала окна),
-    - применяем события по времени, обновляя текущий статус робота,
-    - для конца каждого бакета смотрим, сколько роботов в ACTIVE_STATUSES.
-    """
-    # Текущие статусы роботов к "течению времени"
+    """На конец каждого бакета считаем % активных (ACTIVE_STATUSES)."""
     state: Dict[str, str] = dict(baseline)
-
-    # Индекс событий, будем «прокручивать» их по оси
     idx = 0
     n = len(events)
-
     out: List[Tuple[str, float]] = []
+
     if total_robots <= 0:
-        # 0 роботов — просто нули
         return [(t.isoformat(), 0.0) for t in axis]
 
-    # Для каждого бакета применяем все события с ts <= конца бакета
     for bucket_end in axis:
         while idx < n and events[idx][2] <= bucket_end:
             rid, status, _ts = events[idx]
             state[rid] = status
             idx += 1
-
-        # считаем активных по текущему состоянию
         active = sum(1 for s in state.values() if s in ACTIVE_STATUSES)
         pct = round((active / total_robots) * 100.0, 2)
         out.append((bucket_end.isoformat(), pct))
-
     return out
 
-# === основная публикация ===
+# === публикации ===
 async def publish_robot_activity_series_from_history(
-    session: AsyncSession, warehouse_id: str
+    session: AsyncSession,
+    warehouse_id: str,
+    *,
+    force: bool = False,
 ) -> None:
     """
-    Публикуем РОВНО 7 точек по 10 минут, считая активность как состояние на конец каждого бакета.
-    Ось времени привязывается к последнему событию из RobotHistory для склада.
-    При отсутствии истории — 7 нулей, выровненных по серверному времени.
+    Публикуем 7 точек по 10 минут, считая активность на конец текущего бакета.
+    Правило: не чаще 1 раза в 10 минут от последней публикации (но можно force=True).
     """
-    last_ts = await _latest_history_timestamp(session, warehouse_id)
+    bus = await get_bus_for_current_loop()
+    now_srv = datetime.now(timezone.utc)
 
+    # проверяем throttle по времени
+    next_allowed = _next_allowed_emit.get(warehouse_id)
+    if not force and next_allowed is not None and now_srv < next_allowed:
+        return
+
+    bucket_end = _bucket_end_of(now_srv, BUCKET_SEC)
+    if not force and _last_bucket_sent.get(warehouse_id) == bucket_end:
+        return
+
+    axis = _axis_from_last(now_srv, POINTS_COUNT, BUCKET_SEC)
+    start, end = axis[0], axis[-1]
+
+    last_ts = await _latest_history_timestamp(session, warehouse_id)
     if last_ts is None:
-        # нет истории — отдаём 7 нулей
-        now_srv = datetime.now(timezone.utc)
-        axis = _axis_from_last(now_srv, POINTS_COUNT, BUCKET_SEC)
         series = [(t.isoformat(), 0.0) for t in axis]
-        EVENTS.sync_q.put({
+        await bus.publish(COMMON_CH, {
             "type": "robot.activity_series",
             "warehouse_id": warehouse_id,
             "window_min": WINDOW_MIN,
             "bucket_sec": BUCKET_SEC,
             "series": series,
-            "ts": now_srv.isoformat(),
+            "ts": end.isoformat(),
             "total_robots": 0,
         })
+        _last_bucket_sent[warehouse_id] = bucket_end
+        _next_allowed_emit[warehouse_id] = now_srv + timedelta(seconds=BUCKET_SEC)
         return
 
-    # строим ось из 7 бакетов, заканчивающихся на бакете last_ts
-    axis = _axis_from_last(last_ts, POINTS_COUNT, BUCKET_SEC)
-    start, end = axis[0], axis[-1]
-
     total = await _total_robots(session, warehouse_id)
-
-    # baseline до начала окна + события внутри окна
     baseline = await _baseline_statuses_before(session, warehouse_id, start)
     events = await _events_in_window(session, warehouse_id, start, end)
-
-    # переносим состояния вперёд и считаем % активных
     series = _carry_forward_active_counts(axis, baseline, events, total)
 
-    EVENTS.sync_q.put({
+    await bus.publish(COMMON_CH, {
         "type": "robot.activity_series",
         "warehouse_id": warehouse_id,
         "window_min": WINDOW_MIN,
         "bucket_sec": BUCKET_SEC,
-        "series": series,                 # длина = 7
-        "ts": last_ts.isoformat(),        # «текущее» время — последняя запись в истории
+        "series": series,
+        "ts": end.isoformat(),
         "total_robots": total,
     })
+    _last_bucket_sent[warehouse_id] = bucket_end
+    _next_allowed_emit[warehouse_id] = now_srv + timedelta(seconds=BUCKET_SEC)
+
+# === выбор активных складов ===
+async def _get_active_warehouses_by_ws() -> List[str]:
+    if manager is None:
+        return []
+    try:
+        rooms = await manager.list_rooms()
+        return rooms or []
+    except Exception:
+        return []
+
+async def _get_active_warehouses_by_db(session: AsyncSession) -> List[str]:
+    rows = await session.execute(select(distinct(RobotHistory.warehouse_id)))
+    return [wid for (wid,) in rows.all() if wid]
+
+# === вспомогательная задержка ===
+async def _sleep_until_next_bucket() -> None:
+    now = datetime.now(timezone.utc)
+    next_edge = _floor(now, BUCKET_SEC) + timedelta(seconds=BUCKET_SEC)
+    await asyncio.sleep((next_edge - now).total_seconds())
 
 # === фоновая задача ===
-async def continuous_robot_activity_history_streamer(interval: float = 30.0) -> None:
-    """
-    Каждые interval секунд публикует 7 последних 10-минутных точек активности
-    для всех складов, на которые есть WS-подписчики.
-    """
+async def continuous_robot_activity_history_streamer(
+    interval: float = 600,
+    use_ws_rooms: bool = False,
+) -> None:
+    """Каждые interval секунд публикует 7 последних 10-минутных точек активности."""
+    print(f"🚀 continuous_robot_activity_history_streamer(interval={interval}, use_ws_rooms={use_ws_rooms})")
     try:
+        await _sleep_until_next_bucket()
         while True:
-            rooms = await manager.list_rooms()
-            if rooms:
-                async with async_session() as session:
-                    for wh in rooms:
-                        await publish_robot_activity_series_from_history(session, wh)
-            await asyncio.sleep(interval)
+            try:
+                if use_ws_rooms:
+                    wh_ids = await _get_active_warehouses_by_ws()
+                    if not wh_ids:
+                        await _sleep_until_next_bucket()
+                        continue
+                    async with async_session() as session:
+                        for wh in wh_ids:
+                            await publish_robot_activity_series_from_history(session, wh)
+                else:
+                    async with async_session() as session:
+                        wh_ids = await _get_active_warehouses_by_db(session)
+                        for wh in wh_ids:
+                            await publish_robot_activity_series_from_history(session, wh)
+            except Exception as inner_err:
+                print(f"❌ continuous_robot_activity_history_streamer inner error: {inner_err}")
+            await _sleep_until_next_bucket()
     except asyncio.CancelledError:
-        pass
+        print("🛑 continuous_robot_activity_history_streamer cancelled")
+    except Exception as e:
+        print(f"🔥 continuous_robot_activity_history_streamer fatal error: {e}")
 
 # === точечное обновление после записи в RobotHistory ===
 async def publish_robot_activity_on_history_event(session: AsyncSession, history_id: str) -> None:
-    """
-    Вызывается при записи нового события RobotHistory.
-    Позволяет мгновенно обновить ряд для склада, где изменился статус робота.
-    """
     row = await session.execute(
         select(RobotHistory.warehouse_id).where(RobotHistory.id == history_id)
     )
     wh: Optional[str] = row.scalar_one_or_none()
     if wh:
-        await publish_robot_activity_series_from_history(session, wh)
+        await publish_robot_activity_series_from_history(session, wh, force=True)

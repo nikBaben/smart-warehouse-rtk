@@ -29,11 +29,11 @@ class InventoryHistoryRead(InventoryHistoryBase):
 class InventoryHistoryFilters(BaseModel):
     
     # Фильтры по расположению
-    zone_filter: Optional[str] = Field(None, description="Фильтр по зоне")
+    zone_filter: Optional[List[str]] = Field(None, description="Фильтр по зоне")
     
     # Фильтры по товару
-    category_filter: Optional[str] = Field(None, description="Фильтр по категории")
-    status_filter: Optional[str] = Field(None, description="Фильтр по статусу")
+    category_filter: Optional[List[str]] = Field(None, description="Фильтр по категории")
+    status_filter: Optional[List[str]] = Field(None, description="Фильтр по статусу")
     
     # Фильтры по дате
     date_from: Optional[date] = Field(None, description="Дата с")
@@ -64,6 +64,13 @@ class InventoryHistoryFilters(BaseModel):
         ge=1, 
         le=1000, 
         description="Размер страницы (от 1 до 1000)"
+    )
+
+class InventoryHistoryExport(BaseModel):
+
+    record_ids: Optional[List[str]] = Field(
+        None, 
+        description="Фильтр по периодам: today, yesterday, week, month"
     )
 
 

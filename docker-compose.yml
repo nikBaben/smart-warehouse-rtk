@@ -7,39 +7,118 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5433:5432"   # внешний порт 5433 → внутренний 5432 (для подключения с хоста)
+      - '5433:5432' # внешний порт 5433 → внутренний 5432 (для подключения с хоста)
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d myapp"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d myapp']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: myapp-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
 
   api:
-    build: .                
+    build: .
     container_name: myapp-api
     working_dir: /app
     env_file:
-      - .env                  
+      - .env
     environment:
-      # ПЕРЕОПРЕДЕЛЯЕМ только адрес БД для контейнера:
-      # важно: host = db, порт = 5432 (внутренний порт сервиса Postgres)
-      DB_URL: postgresql+asyncpg://postgres:postgres@db:5432/myapp
+      # единое имя для вашего кода
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/myapp
+      # роль и редис
+      APP_ROLE: api
+      USE_REDIS: "1"
+      REDIS_DSN: redis://redis:6379/0
+      SQLALCHEMY_DISABLE_CEXT: "1"     # <<< ОБЯЗАТЕЛЬНО
+      USE_UVLOOP: "0"                  # на всякий случай
     depends_on:
       db:
         condition: service_healthy
       keycloak:
         condition: service_started
+      redis:
+        condition: service_healthy
     ports:
-      - "8000:8000"  
+      - "8000:8000"
     expose:
-      - "8000"                 # доступно только внутри docker-сети
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+      - "8000"
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0 --port 8000
+      --proxy-headers
+      --workers 3
+      --loop uvloop
+      --http httptools
+      --timeout-keep-alive 5
     volumes:
       - ./:/app
       - ./tools/websocat:/usr/local/bin/websocat:ro
-  
+
+  worker:
+    build: .
+    container_name: myapp-worker
+    working_dir: /app
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    env_file:
+      - .env
+    environment:
+      # ── соединения БД / Redis ────────────────────────────────────────────────
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/myapp
+      REDIS_DSN: redis://redis:6379/0
+
+      # ── важные флаги для устойчивости логов/цикла ────────────────────────────
+      PYTHONUNBUFFERED: "1"          # мгновенная печать логов
+      PYTHONFAULTHANDLER: "1"        # stack traces при крэшах
+      USE_UVLOOP: "0"                # быстрее event loop, если доступен
+      SQLALCHEMY_DISABLE_CEXT: "1"
+
+      # ── параметры эмулятора (можно подстроить) ──────────────────────────────
+      ROBOT_TICK_INTERVAL: "0.5"     # чем меньше, тем «плавнее» (напр. 0.25)
+      POSITION_RATE_LIMIT_SEC: "0.25"
+      RESCAN_COOLDOWN_SEC: "30"
+      SCAN_DURATION_SEC: "6"
+
+      # ── пул SQLAlchemy для воркера (ИМЕННО ЭТИ используются кодом) ───────────
+      DB_POOL_SIZE: "40"
+      DB_MAX_OVERFLOW: "80"
+
+      # ⚠ Эти переменные в текущем коде НЕ используются (можешь удалить),
+      # оставляю, чтобы не ломать окружение:
+      ROBOT_POOL_SIZE: "300"
+      ROBOT_MAX_OVERFLOW: "600"
+      ROBOT_POOL_TIMEOUT: "30.0"
+      ROBOT_CONCURRENCY: "10"
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    command: python -m app.workers.runner
+
+    volumes:
+      - ./:/app
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('ok')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
   # --- База данных для Keycloak ---
   keycloak-db:
     image: postgres:15-alpine
@@ -49,11 +128,11 @@ services:
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD: keycloak
     ports:
-      - "5432:5432" 
+      - '5432:5432'
     volumes:
       - keycloak_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak_db"]
+      test: ['CMD-SHELL', 'pg_isready -U keycloak -d keycloak_db']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -73,13 +152,13 @@ services:
       keycloak-db:
         condition: service_healthy
     command:
-      - "start-dev"
-      - "--verbose"
-      - "--hostname=http://51.250.97.137:8080"
-      - "--http-enabled=true"
-      - "--proxy-headers=xforwarded"
+      - 'start-dev'
+      - '--verbose'
+      #- "--hostname=http://51.250.97.137:8080"
+      - '--http-enabled=true'
+      - '--proxy-headers=xforwarded'
     ports:
-      - "8080:8080"
+      - '8080:8080'
 
   caddy:
     image: caddy:2
@@ -94,7 +173,6 @@ services:
       - caddy_config:/config
     depends_on:
       - api
-
 
 volumes:
   pgdata:

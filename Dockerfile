@@ -9,6 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # Установим зависимости
+ENV SQLALCHEMY_DISABLE_CEXT=1
 RUN pip install --no-cache-dir --upgrade pip
 
 # Скопируем файлы зависимостей (pyproject.toml, poetry.lock или requirements.txt)

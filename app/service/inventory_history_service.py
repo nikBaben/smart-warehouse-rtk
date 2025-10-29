@@ -6,6 +6,7 @@ from uuid import uuid4
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, List, Dict, Any
+from io import BytesIO
 
 from app.repositories.inventory_history_repo import InventoryHistoryRepository
 from app.models.inventory_history import InventoryHistory
@@ -56,5 +57,24 @@ class InventoryHistoryService:
             raise ValueError(
                 f"История инвентаризации на складе id '{warehouse_id}' "
                 f"с примененными фильтрами не найдена."
+            )
+        return inventory_history
+    
+
+    async def inventory_history_export_to_xl(
+        self, 
+        warehouse_id: str,
+        record_ids: List[str]
+    ) -> BytesIO:
+
+        inventory_history = await self.repo.inventory_history_export_to_xl(
+            warehouse_id=warehouse_id,
+             record_ids= record_ids
+        )
+        
+        if not inventory_history:
+            raise ValueError(
+                f"История инвентаризации на складе id '{warehouse_id}' "
+                f"не найдена."
             )
         return inventory_history
