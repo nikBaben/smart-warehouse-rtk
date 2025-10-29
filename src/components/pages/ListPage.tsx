@@ -5,12 +5,16 @@ import { useWarehouseStore } from '@/store/useWarehouseStore.tsx'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import type { Warehouse } from '../types/warehouse.ts'
 import AddSmall from '@atomaro/icons/24/action/AddSmall'
 import { UserAvatar } from '../ui/UserAvatar.tsx'
 import { AddWarehouseDialog } from '../ui/AddWarehouseDialog.tsx'
 import { Check } from 'lucide-react'
 import { toast } from 'sonner'
+import { WarehouseList } from '../warehouses/WarehousesList.tsx'
 import { Skeleton } from '@/components/ui/skeleton'
+import type { Robot } from '@/components/types/robot.ts'
+import type { Product } from '@/components/types/product.ts'
 import {
 	Select,
 	SelectContent,
@@ -29,41 +33,23 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 
-type WhRobot = {
-	status: string
-	id: string
-	battery_level: number
-}
-
-type WhProduct = {
-	id: string
-	name: string
-	article: string
-	category: string
-	stock: number
-	current_row: number
-	current_shelf: string
-	current_position: string
-	status: string
-}
-
-type Warehouse = {
-	name: string
-	address: string
-	products_count: number
-	max_products: number
-	id: string
-}
 
 function ListPage() {
 	const token = localStorage.getItem('token')
 	//-----ОБРАБОТКА СОСТОЯНИЙ-----
 	const { user } = useUserStore()
 
-	
 	const [openAdd, setOpenAdd] = useState(false)
 	const [openEdit, setOpenEdit] = useState(false)
+	const [contextRobot, setContextRobot] = useState<Robot | null>(null)
+	const [contextProduct, setContextProduct] = useState<Robot | null>(null)
 
 	const {
 		warehouses,
@@ -73,6 +59,7 @@ function ListPage() {
 		selectedWarehouse,
 		setSelectedWarehouse,
 		updateWarehouse,
+		deleteWarehouse,
 	} = useWarehouseStore()
 
 	const [editedWarehouse, setEditedWarehouse] = useState({
@@ -81,10 +68,10 @@ function ListPage() {
 		max_products: 0,
 	})
 
-	const [editedProduct, setEditedProduct] = useState<WhProduct | null>(null)
-	const [products, setProducts] = useState<WhProduct[]>([])
+	const [editedProduct, setEditedProduct] = useState<Product | null>(null)
+	const [products, setProducts] = useState<Product[]>([])
 
-	const [robots, setRobots] = useState<WhRobot[]>([])
+	const [robots, setRobots] = useState<Robot[]>([])
 
 	const [formData, setFormData] = useState({
 		name: '',
@@ -123,16 +110,16 @@ function ListPage() {
 	}
 
 	const [loadingInfo, setLoadingInfo] = useState(false)
+	const [contextWarehouse, setContextWarehouse] = useState<Warehouse>()
 	/* 	const [error, setError] = useState<string | null>(null) */
 
 	let denyAdminAccess = !(user?.role === 'operator')
-
-	//-----ЗАГРУЗКА СПИСКА СКЛАДОВ-----
 	useEffect(() => {
 		fetchWarehouses()
 		setSelectedWarehouse(null)
-	}, [])
-/* 	useEffect(() => {
+	}, [fetchWarehouses])
+
+	/* 	useEffect(() => {
 		if (!token) {
 			console.warn('Токен отсутствует — пользователь не авторизован')
 			alert('Токен отсутствует — пользователь не авторизован')
@@ -156,7 +143,7 @@ function ListPage() {
 	//-----ВЫБОР СКЛАДА-----
 	const handleSelectWarehouse = async (warehouse: Warehouse) => {
 		setLoadingInfo(true)
-		
+
 		if (selectedWarehouse?.id === warehouse.id) {
 			setSelectedWarehouse(null)
 			setRobots([])
@@ -178,14 +165,14 @@ function ListPage() {
 		} catch (err) {
 			console.error('Ошибка при загрузке данных склада:', err)
 			toast.error('Не удалось получить данные склада')
-		}
-		finally{
+		} finally {
 			setLoadingInfo(false)
 		}
 	}
 
 	//-----ДОБАВЛЕНИЕ РОБОТА-----
 	const handleAddRobot = async () => {
+		setLoadingInfo(true)
 		if (!selectedWarehouse)
 			return alert('Выберите склад для добавления робота.')
 		try {
@@ -199,11 +186,11 @@ function ListPage() {
 			toast.success(`Робот успешно добавлен на склад ${selectedWarehouse.name}`)
 
 			// обновляем список роботов для текущего склада
-			const robotsResponse = await api.get(`/robot/get_robots_by_warehouse_id/${selectedWarehouse.id}`)
-			setRobots(robotsResponse.data)
+			fetchRobots()
 		} catch (error) {
 			console.error('Ошибка при добавлении робота:', error)
 			alert('Не удалось добавить робота')
+			setLoadingInfo(false)
 		}
 	}
 	//-----РЕДАКТИРОВАНИЕ СКЛАДА-----
@@ -255,6 +242,7 @@ function ListPage() {
 			alert('Сначала выберите склад')
 			return
 		}
+		setLoadingInfo(true)
 		try {
 			const [rowPos, shelfPos] = formData.current_position
 				.split(',')
@@ -275,9 +263,7 @@ function ListPage() {
 			toast.success('Товар успешно добавлен!')
 
 			//обновляем список товаров текущего склада
-			const updatedProducts = await api.get(`/products/get_products_by_warehouse_id/${selectedWarehouse.id}`)
-			setProducts(updatedProducts.data)
-
+			fetchProducts()
 			setOpenAdd(false)
 
 			//очистка формы
@@ -293,8 +279,7 @@ function ListPage() {
 		} catch (error) {
 			console.error('Ошибка при добавлении товара:', error)
 			toast.error('Не удалось добавить товар')
-		} finally {
-			/* setLoading(false) */
+			setLoadingInfo(false)
 		}
 	}
 
@@ -312,7 +297,7 @@ function ListPage() {
 		})
 	}
 
-	const handleOpenProduct = (product: WhProduct) => {
+	const handleOpenProduct = (product: Product) => {
 		setEditedProduct(product)
 		setOpenEdit(true)
 	}
@@ -345,6 +330,92 @@ function ListPage() {
 		}
 	}
 
+	//-----СПИСОК 	РОБОТОВ-----
+	const fetchRobots = async () => {
+		setLoadingInfo(true)
+		if (!selectedWarehouse) {
+			toast.warning('Сначала выберите склад')
+			return
+		}
+		try {
+			const robotsResponse = await api.get(
+				`/robot/get_robots_by_warehouse_id/${selectedWarehouse.id}`
+			)
+			setRobots(robotsResponse.data)
+			toast.success('Список роботов обновлен')
+		} catch (err) {
+			console.error(err)
+			toast.error('Ошибка при загрузке списка роботов')
+		} finally {
+			setLoadingInfo(false)
+		}
+	}
+
+	//-----СПИСОК ТОВАРОВ-----
+	const fetchProducts = async () => {
+		setLoadingInfo(true)
+		if (!selectedWarehouse) {
+			toast.warning('Сначала выберите склад')
+			return
+		}
+		try{
+			const productsResponse = await api.get(
+				`/products/get_products_by_warehouse_id/${selectedWarehouse.id}`
+			)
+			setProducts(productsResponse.data)
+			toast.success('Список товаров обновлен')
+		} catch (err) {
+			console.error(err)
+			toast.error('Ошибка при загрузке списка товаров')
+		} finally {
+			setLoadingInfo(false)
+		}
+	}
+
+	//-----УДАЛЕНИЕ РОБОТА-----
+	const handleDeleteRobot = async (robot: Robot) => {
+		if (
+			!confirm(
+				`Вы действительно хотите удалить робота "${robot.id}"? Данное действие невозможно отменить`
+			)
+		)
+			return
+		setLoadingInfo(true)
+		try {
+			await api.delete(`/robot/${robot.id}`)
+			setContextRobot(null)
+			toast.success(`Робот ${robot.id} успешно удалён`)
+			//обновляем список роботов
+			fetchRobots()
+		} catch (err) {
+			console.error(err)
+			toast.error(`Не удалось удалить робота ${robot.id}`)
+		} finally{
+			setLoadingInfo(false)
+		}
+	}
+
+	//-----УДАЛЕНИЕ ТОВАРА-----
+	const handleDeleteProduct = async (product: Product) => {
+		if (
+			!confirm(
+				`Вы действительно хотите удалить товар "${product.name}"? Данное действие невозможно отменить`
+			)
+		)
+			return
+		setLoadingInfo(true)
+		try {
+			await api.delete(`/products/${product.id}`)
+			setContextProduct(null)
+			toast.success(`Товар ${product.name} успешно удален`)
+			//обновляем список товаров
+			fetchProducts()
+		} catch (err) {
+			console.error(err)
+			toast.error(`Не удалось удалить товар ${product.name}`)
+			setLoadingInfo(false)
+		}
+	}
 	return (
 		<div className='flex bg-[#F4F4F5] min-h-screen'>
 			<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
@@ -360,57 +431,15 @@ function ListPage() {
 					<div className='grid grid-cols-24 gap-3 justify-between h-full'>
 						<section className='bg-white rounded-[15px] col-span-10 h-full p-[10px]'>
 							<h2 className='big-section-font mb-3'>Список складов</h2>
-							{loading ? (
-								<div className='space-y-2'>
-									{[...Array(4)].map((_, i) => (
-										<div
-											key={i}
-											className='flex justify-between items-center bg-[#F2F3F4] rounded-[10px] px-[10px] py-[10px]'
-										>
-											<div className='flex items-center gap-3'>
-												<Skeleton className='bg-[#CDCED2] h-[20px] w-[120px] rounded-md' />
-											</div>
-											<div className='text-right space-y-1'>
-												<Skeleton className='bg-[#CDCED2] h-[14px] w-[180px] rounded-md' />
-												<Skeleton className='bg-[#CDCED2] h-[14px] w-[200px] rounded-md' />
-											</div>
-										</div>
-									))}
-								</div>
-							) : error ? (
-								<div className='flex items-center justify-center font-medium text-center h-full text-[#9699A3] text-[24px]'>
-									не удалось получить данные о складах
-								</div>
-							) : (
-								<div className='space-y-2 overflow-y-hidden max-h-full'>
-									{warehouses.map(wh => (
-										<div
-											key={wh.name}
-											onClick={() => handleSelectWarehouse(wh)}
-											className={`flex justify-between items-center bg-[#F2F3F4] rounded-[10px] max-h-[60px] px-[10px] py-[10px] cursor-pointer transition-all border-[2px]
-													${
-														selectedWarehouse?.name === wh.name
-															? 'border-[2px] border-[#7700FF]'
-															: 'border border-transparent hover:border-[2px] hover:border-[#7700FF33]'
-													}`}
-										>
-											<div className='flex items-center'>
-												<span className='text-[20px] font-medium text-black'>
-													{wh.name}
-												</span>
-											</div>
-											<div className='text-right space-y-0'>
-												<div className='text-[14px] font-normal text-[#5A606D]'>
-													адрес: {wh.address}
-												</div>
-												<div className='text-[14px] font-normal text-[#5A606D]'>
-													текущее количество товаров: {wh.products_count}
-												</div>
-											</div>
-										</div>
-									))}
-								</div>
-							)}
+							<WarehouseList
+								warehouses={warehouses}
+								selectedWarehouse={selectedWarehouse}
+								loading={loading}
+								error={error}
+								onSelect={handleSelectWarehouse}
+								onContextMenu={setContextWarehouse}
+								onDelete={deleteWarehouse}
+							/>
 						</section>
 
 						<section className='bg-white rounded-[15px] col-span-14 h-full p-[10px] space-y-5'>
@@ -554,20 +583,31 @@ function ListPage() {
 												не удалось получить данные о складах
 											</div>
 										) : (
-											<div className='max-h-[240px] overflow-y-auto space-y-2'>
+											<div className='max-h-[235px] overflow-y-auto space-y-2'>
 												{robots.map(robot => (
-													<div
-														key={robot.id}
-														className='flex justify-between bg-[#F2F3F4] max-h-[52px] rounded-[10px] px-[10px] py-[10px] items-center'
-													>
-														<span className='text-[18px] font-medium text-black'>
-															{robot.id}
-														</span>
-														<div className='text-right text-[#5A606D] text-[14px]'>
-															<div>заряд: {robot.battery_level}%</div>
-															<div>статус: {getRobotStatus(robot.status)}</div>
-														</div>
-													</div>
+													<ContextMenu key={robot.id}>
+														<ContextMenuTrigger asChild>
+															<div className='product-button-elem'>
+																<span className='text-[18px] font-medium text-black'>
+																	{robot.id}
+																</span>
+																<div className='text-right text-[#5A606D] text-[14px]'>
+																	<div>заряд: {robot.battery_level}%</div>
+																	<div>
+																		статус: {getRobotStatus(robot.status)}
+																	</div>
+																</div>
+															</div>
+														</ContextMenuTrigger>
+														<ContextMenuContent className='bg-[#F2F3F4] border-[#9699A3] p-0 rounded-[10px]'>
+															<ContextMenuItem
+																className='context-menu-delete'
+																onClick={() => handleDeleteRobot(robot)}
+															>
+																Удалить
+															</ContextMenuItem>
+														</ContextMenuContent>
+													</ContextMenu>
 												))}
 											</div>
 										)}
@@ -735,23 +775,35 @@ function ListPage() {
 												не удалось получить данные о складах
 											</div>
 										) : (
-											<div className='!max-h-[240px] overflow-y-auto space-y-2'>
+											<div className='!max-h-[235px] overflow-y-auto !space-y-2'>
 												{products.map(p => (
-													<Button
-														key={p.id}
-														onClick={() => handleOpenProduct(p)}
-														className='product-button'
-													>
-														<div className='product-button-elem'>
-															<span className='text-[18px] font-medium text-black'>
-																{p.name}
-															</span>
-															<div className='text-right text-[#5A606D] text-[14px]'>
-																<div>статус: {getStatusName(p.status)}</div>
-																<div>количество: {p.stock} шт</div>
-															</div>
-														</div>
-													</Button>
+													<ContextMenu key={p.id}>
+														<ContextMenuTrigger asChild>
+															<Button
+																key={p.id}
+																onClick={() => handleOpenProduct(p)}
+																className='product-button'
+															>
+																<div className='product-button-elem'>
+																	<span className='text-[18px] font-medium text-black'>
+																		{p.name}
+																	</span>
+																	<div className='text-right text-[#5A606D] text-[14px]'>
+																		<div>статус: {getStatusName(p.status)}</div>
+																		<div>количество: {p.stock} шт</div>
+																	</div>
+																</div>
+															</Button>
+														</ContextMenuTrigger>
+														<ContextMenuContent className='bg-[#F2F3F4] border-[#9699A3] p-0 rounded-[10px]'>
+															<ContextMenuItem
+																className='context-menu-delete'
+																onClick={() => handleDeleteProduct(p)}
+															>
+																Удалить
+															</ContextMenuItem>
+														</ContextMenuContent>
+													</ContextMenu>
 												))}
 												<Dialog open={openEdit} onOpenChange={setOpenEdit}>
 													<DialogContent className='bg-[#F4F4F5] !p-[20px] !w-[558px]'>

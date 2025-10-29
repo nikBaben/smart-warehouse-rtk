@@ -1,4 +1,4 @@
-import axios from "axios";
+import api from '@/api/axios.ts';
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useUserStore } from '../../store/useUserStore.tsx'
@@ -68,16 +68,7 @@ function SettingsPage(){
 				role: form.role,
 			}
 
-			const response = await axios.put(
-				`https://dev.rtk-smart-warehouse.ru/api/v1/user/${user.id}`,
-				payload,
-				{
-					headers: {
-						Authorization: `Bearer ${token}`,
-						'Content-Type': 'application/json',
-					},
-				}
-			)
+			const response = await api.put(`/user/${user.id}`,payload)
 
 			const updated = response.data
 			const [updatedFirstName, updatedLastName = ''] = updated.name.split(' ')
@@ -108,8 +99,8 @@ function SettingsPage(){
 
   return (
 		<div className='flex bg-[#F4F4F5] min-h-screen'>
-			<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
-				<header className='bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-[300]'>
+			<div className='flex flex-col flex-1 ml-[60px]'>
+				<header className='bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-10'>
 					<span className='page-name'>Параметры и уведомления</span>
 				</header>
 				<main className='flex-1 pt-[70px] pl-[10px] pr-[10px] pb-[10px]'>
@@ -164,8 +155,7 @@ function SettingsPage(){
 									<div className='flex flex-col'>
 										<Label className='section-title'>Логин</Label>
 										<Label className='input-description'>
-											Укажите свою почту, чтобы мы могли Вас
-											идентифицировать
+											Укажите свою почту, чтобы мы могли Вас идентифицировать
 										</Label>
 										<Input
 											className='main-input !text-[16px]'
@@ -175,8 +165,11 @@ function SettingsPage(){
 											value={user?.email}
 										/>
 									</div>
-									<div className='relative'>
-										<span className='section-title'>Роль</span>
+									<div className='flex flex-col'>
+										<Label className='section-title'>Роль</Label>
+										<Label className='input-description'>
+											Роль определяет уровень ваших прав на сайте
+										</Label>
 										<Select
 											value={form.role}
 											onValueChange={value => handleChange('role', value)}
@@ -191,16 +184,6 @@ function SettingsPage(){
 												</SelectItem>
 											</SelectContent>
 										</Select>
-									</div>
-									<div className='flex gap-[12px] items-center'>
-										<Switch
-											checked={showNotifications}
-											onCheckedChange={setShowNotifications}
-											className='data-[state=checked]:bg-[#7700FF] data-[state=unchecked]:bg-gray-300 h-[20px] w-[36px]'
-										/>
-										<span className='text-[20px]'>
-											Отображать уведомления в интерфейсе
-										</span>
 									</div>
 									<div className='flex gap-[10px]'>
 										<Button className='flex-1 h-[40px] bg-white border-[2px] border-[#FF4F12] text-[#FF4F12] text-[18px] rounded-[10px]'>
@@ -237,7 +220,7 @@ function SettingsPage(){
 								<img
 									src='/src/assets/images/warehouse-img 1.svg'
 									alt='Warehouse'
-									className='w-[435px] h-[290px]'
+									className='w-[507px] h-[338px]'
 								/>
 							</div>
 						</section>

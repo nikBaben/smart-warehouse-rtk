@@ -19,7 +19,7 @@ export function ExitDialogue(){
 	const { clearUser } = useUserStore()
   const handleExit = async () => {
 		localStorage.removeItem('token')
-		/* clearUser() */
+		clearUser()
     window.location.href = '/auth'
 	}
   return (

@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { useSocketStore } from '@/store/useSocketStore'
+import { Spinner } from '@/components/ui/spinner'
 
 type TableRowData = {
 	scanned_at: string
@@ -33,6 +34,7 @@ export function ScanStoryTable() {
 	//сохраняем последние 20 сканирований
 	useEffect(() => {
 		if (productScan) {
+			console.log('productScan:', productScan)
 			setScanHistory(prev => {
 				const updated = [productScan, ...prev]
 				return updated.slice(0, 20)
@@ -126,37 +128,49 @@ export function ScanStoryTable() {
 							))}
 						</TableRow>
 					</TableHeader>
-
 					<TableBody className='[&_tr]:h-[30px]'>
-						{tableData.map((item, i) => (
-							<TableRow
-								key={i}
-								className='bg-[#F6F7F7] row-height rounded-lg mb-2 text-[14px]'
-							>
-								{columns.map((col, index) => {
-									const value =
-										typeof col.accessor === 'function'
-											? col.accessor(item)
-											: (item[col.accessor] as React.ReactNode)
-
-									const isFirst = index === 0
-									const isLast = index === columns.length - 1
-
-									return (
-										<TableCell
-											key={index}
-											className={cn(
-												'text-center py-[5px]',
-												isFirst && 'rounded-l-lg',
-												isLast && 'rounded-r-lg text-right'
-											)}
-										>
-											{value}
-										</TableCell>
-									)
-								})}
+						{tableData.length == 0 ? (
+							<TableRow>
+								<TableCell
+									colSpan={columns.length}
+									className='text-center py-20'
+								>
+									<div className='spinner-load-container'>
+										<Spinner className='size-5 m-1' /> ожидаем сканирования...
+									</div>
+								</TableCell>
 							</TableRow>
-						))}
+						) : (
+							tableData.map((item, i) => (
+								<TableRow
+									key={i}
+									className='bg-[#F6F7F7] row-height rounded-lg mb-2 text-[14px]'
+								>
+									{columns.map((col, index) => {
+										const value =
+											typeof col.accessor === 'function'
+												? col.accessor(item)
+												: (item[col.accessor] as React.ReactNode)
+
+										const isFirst = index === 0
+										const isLast = index === columns.length - 1
+
+										return (
+											<TableCell
+												key={index}
+												className={cn(
+													'text-center py-[5px]',
+													isFirst && 'rounded-l-lg',
+													isLast && 'rounded-r-lg text-right'
+												)}
+											>
+												{value}
+											</TableCell>
+										)
+									})}
+								</TableRow>
+							))
+						)}
 					</TableBody>
 				</Table>
 			</div>

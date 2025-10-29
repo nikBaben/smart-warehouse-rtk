@@ -18,10 +18,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { useUserStore } from '@/store/useUserStore.tsx'
-
+import { useWarehouseStore } from '@/store/useWarehouseStore'
 export function AddWarehouseDialog() {
 
 	const [open, setOpen] = useState(false)
+
+	const { fetchWarehouses } = useWarehouseStore()
 
 	const [formData, setFormData] = useState({
 		name: '',
@@ -53,6 +55,7 @@ export function AddWarehouseDialog() {
 
 			console.log('Склад успешно добавлен:', response.data)
 			toast.success(`Склад ${formData.name} успешно добавлен`)
+			fetchWarehouses()
 			setOpen(false)
 			setFormData({ name: '', address: '', max_products: '' })
 		} catch (error) {

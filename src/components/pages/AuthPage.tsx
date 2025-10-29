@@ -1,6 +1,6 @@
 import api from '@/api/axios'
 import { AxiosError } from 'axios'
-import React, { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { Header } from '@/components/ui/header'
 import { Footer } from '@/components/ui/footer'
 import { toast } from 'sonner'
-import { useUserStore } from '../../store/useUserStore.tsx'
+import { useUserStore } from '@/store/useUserStore.tsx'
 
 /* type User = {
 	id: number,
@@ -23,11 +23,18 @@ function AuthPage() {
 
 	const navigate = useNavigate()
 	const setUser = useUserStore(state => state.setUser)
+	useEffect(()=>{
+		setEmail('')
+		setPassword('')
+	},[])
 	const handleLogin = async () => {
-		setLoading(true)
+		if (!email?.trim() || !password) {
+			toast.error('Введите email и пароль')
+			return
+		}
 
-		const token = localStorage.getItem('token')
-		const payload = { email, password }
+		setLoading(true)
+		const payload = { email: email?.trim(), password }
 		try {
 			const response = await api.post('/auth/login',payload)
 			localStorage.setItem('token', response.data.token)
@@ -69,13 +76,15 @@ function AuthPage() {
 			<main className='flex-1 flex flex-col items-center justify-center p-4 relative'>
 				<div className='flex flex-col gap-[20px]'>
 					<div className='w-[430px] h-[550px] bg-white rounded-[15px] overflow-hidden max-w-md p-8 flex flex-col items-center'>
-						<div className='w-full m-[20px] h-[68px] flex flex-col gap-[20px]'>
+						<form className='w-full m-[20px] h-[68px] flex flex-col gap-[20px]' autoComplete='on'>
 							<h1 className='text-2xl font-bold flex flex-col items-center justify-center'>
 								Войти на склад
 							</h1>
 							<div className='flex flex-col items-center justify-center'>
 								<Input
-									placeholder='Телефон, почта или логин'
+									name='email'
+									autoComplete='email'
+									placeholder='Электронная почта'
 									value={email}
 									onChange={e => setEmail(e.target.value)}
 									className='w-[365px] h-[68px] rounded-[10px] border-none bg-[#F2F3F4] placeholder-[#A1A1AA] placeholder:font-medium placeholder:text-[18px] placeholder:leading-[24px] shadow-none !text-[18px] !leading-[24px] !text-[#000000] !font-medium'
@@ -84,7 +93,9 @@ function AuthPage() {
 							<div className='flex flex-col gap-[20px]'>
 								<div className='flex flex-col items-center justify-center'>
 									<Input
+										name='password'
 										type='password'
+										autoComplete='password'
 										placeholder='Пароль'
 										value={password}
 										onChange={e => setPassword(e.target.value)}
@@ -113,6 +124,7 @@ function AuthPage() {
 							<div className='flex flex-col items-center justify-center'>
 								<Button
 									disabled={!email || !password || loading}
+									type='button'
 									onClick={handleLogin}
 									className={`w-[365px] cursor-pointer h-[68px] rounded-[10px] text-[18px] leading-[24px] shadow-none ${
 										!email || !password
@@ -136,7 +148,7 @@ function AuthPage() {
 									Забыли пароль?
 								</span>
 							</p>
-						</div>
+						</form>
 					</div>
 
 					<div className='w-full h-[123px] bg-white rounded-[15px] overflow-hidden max-w-md relative'>

@@ -5,7 +5,8 @@ import Home from "@atomaro/icons/24/action/Home";
 import History from '@atomaro/icons/24/communication/History';
 import MenuPlusBullets from "@atomaro/icons/24/navigation/MenuPlusBullets";
 import Settings from '@atomaro/icons/24/action/Settings';
-import Release from '@atomaro/icons/24/action/Release';
+import DeliveryBox from '@atomaro/icons/24/business/DeliveryBox'
+import BarCode from '@atomaro/icons/24/action/BarCode'
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ExitDialogue } from "./ExitDialogue";
 
@@ -26,10 +27,11 @@ export function Navbar() {
 
 				<div className='absolute top-[60px] left-1/2 -translate-x-1/2 w-[60px] border-b-[1px] border-[#5A606D]' />
 
-				<div className='flex flex-col items-center w-[30px] h-[250px] justify-center gap-[30px]'>
+				<div className='flex flex-col items-center w-[30px] h-[300px] justify-center gap-[30px]'>
 					<nav className='flex flex-col gap-[30px] items-center'>
 						<NavItem icon={Home} label='Главная' to='/' />
-						<NavItem icon={History} label='Карта' to='/history' />
+						<NavItem icon={History} label='История' to='/history' />
+						<NavItem icon={DeliveryBox} label='Поставки' to='/supplies' />
 						<NavItem icon={MenuPlusBullets} label='Меню' to='/list' />
 						<UploadCSV />
 					</nav>

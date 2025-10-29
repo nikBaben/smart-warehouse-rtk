@@ -110,15 +110,12 @@ export const useSocketStore = create<SocketState>(set => ({
 				set({ statusAvg: msg })
 				break
 			case 'robot.activity_series':
-				set(state => ({
-					activitySeries: {
-						...msg,
-						series: [
-							...(state.activitySeries?.series || []),
-							...msg.series,
-						].slice(-60),
-					},
-				}))
+				set(state=>{
+					if(JSON.stringify(state.activitySeries?.series) === JSON.stringify(msg.series)){
+      			return {} // ничего не меняем, чтобы не триггерить ререндер
+    			}
+    			return { activitySeries: msg } // заменяем полностью
+				})
 				break
 			case 'product.scan':
 				set({ productScan: msg })

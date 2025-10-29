@@ -1,13 +1,8 @@
 import { create } from 'zustand'
 import api from '@/api/axios'
+import type { Warehouse } from '../components/types/warehouse'
+import { toast } from 'sonner'
 
-export type Warehouse = {
-	id: string
-	name: string
-	address: string
-	products_count: number
-	max_products: number
-}
 
 type WarehouseStore = {
 	warehouses: Warehouse[]
@@ -18,6 +13,7 @@ type WarehouseStore = {
 	fetchWarehouses: () => Promise<void>
 	setSelectedWarehouse: (wh: Warehouse | null) => void
 	updateWarehouse: (warehouse: Warehouse) => void
+	deleteWarehouse: (warehouse: Warehouse) => Promise<void>
 }
 
 export const useWarehouseStore = create<WarehouseStore>((set, get) => ({
@@ -35,7 +31,7 @@ export const useWarehouseStore = create<WarehouseStore>((set, get) => ({
 			set({ error: 'Не удалось получить список складов', loading: false })
 		}
 	},
-/* 	fetchWarehouses: async (token: string) => {
+	/* 	fetchWarehouses: async (token: string) => {
 		set({ loading: true, error: null })
 		try {
 			const res = await api.get('/warehouses')
@@ -46,6 +42,29 @@ export const useWarehouseStore = create<WarehouseStore>((set, get) => ({
 	}, */
 
 	setSelectedWarehouse: wh => set({ selectedWarehouse: wh }),
+
+	deleteWarehouse: async (warehouse) => {
+		if (
+			!confirm(
+				`Вы действительно хотите удалить склад "${warehouse.name}"? Данное действие невозможно отменить`
+			)
+		)
+			return
+		try {
+			await api.delete(`/warehouse/${warehouse.id}`)
+			if (get().selectedWarehouse?.id === warehouse.id) {
+				set({ selectedWarehouse: null })
+			}
+			//обновляем локальное состояние без доп запроса к серверу
+			set({
+				warehouses: get().warehouses.filter(w => String(w.id) !== String(warehouse.id)),
+			})
+			toast.success(`Склад ${warehouse.name} успешно удалён`)
+		} catch (err) {
+			console.error(err)
+			toast.error(`Не удалось удалить склад ${warehouse.name}`)
+		}
+	},
 
 	updateWarehouse: updated => {
 		set({

@@ -28,6 +28,14 @@ export const useUserStore = create<UserState>()(
 				),
 			clearUser: () => set({ user: null }),
 		}),
-		{ name: 'user-storage' } //ключ в localStorage
+		{
+			name: 'user-storage',
+			// сохраняем минимально (например, только id/email) если нужно
+			partialize: state => ({
+				user: state.user
+					? { id: state.user.id, email: state.user.email }
+					: null,
+			}),
+		}
 	)
 )

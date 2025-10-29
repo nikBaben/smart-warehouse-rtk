@@ -71,8 +71,8 @@ export function Notification(){
   const handleNotifications = async(token: string) => {
     setLoading(true)
     try{
-      const response = await api.get('/notifications')
-      setNotifications(response.data)
+     /*  const response = await api.get('/notifications') */
+      /* setNotifications(response.data) */
     }
     catch(error){
       toast.error('Не удалось загрузить уведомления')
@@ -83,12 +83,12 @@ export function Notification(){
   }
 
   useEffect(()=>{
-    if (!token){
+/*     if (!token){
       console.warn('Токен отсутствует — пользователь не авторизован')
 			alert('Токен отсутствует — пользователь не авторизован')
       return
     }
-    handleNotifications(token)
+    handleNotifications(token) */
   })
   return (
     <div className="bg-white rounded-[15px]">

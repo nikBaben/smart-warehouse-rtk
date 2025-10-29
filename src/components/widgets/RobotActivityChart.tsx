@@ -20,7 +20,7 @@ export function RobotActivityChart(){
 		}), 
 		value,
 	})) || []
-	console.log('📊 activitySeries:', activitySeries)
+	/* console.log('📊 activitySeries:', activitySeries) */
 
   return (
 		<div className='w-full h-full flex items-center justify-center'>
@@ -32,9 +32,10 @@ export function RobotActivityChart(){
 					<CartesianGrid stroke='#CCCCCC' />
 					<XAxis
 						dataKey='time'
+						tickCount={6}
 						tick={{ fontSize: 10, fill: '#000000' }}
 						label={{
-							value: 'мин',
+							value: '',
 							position: 'insideRight',
 							dy: -3.5,
 							offset: -9,
