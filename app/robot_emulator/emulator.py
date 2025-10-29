@@ -681,7 +681,7 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
         payload.append(
             {
                 "id": p.id, "name": p.name, "category": p.category, "article": getattr(p, "article", None),
-                "current_row": rx, "current_shelf": shelf, "shelf_num": ry,
+                "current_row": rx, "current_shelf": shelf, "shelf_num": ry,"current_zone": p.current_zone,
                 "stock": stock, "status": status, "scanned_at": now_iso,
             }
         )
