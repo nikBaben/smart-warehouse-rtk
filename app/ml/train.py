@@ -20,7 +20,8 @@ async def train_for_product(product_id: str, model_path: str, freq: str = "D", w
     train_df = df[["ds", "net_outgoing"]].rename(columns={"net_outgoing": "y"}).copy()
     train_df["y"] = train_df["y"].astype(float)
 
-    m = Prophet()
+    m = Prophet(yearly_seasonality=True, weekly_seasonality=True)
+    m.add_country_holidays("RU")
     m.fit(train_df)
     save_model(m, model_path)
     return model_path
