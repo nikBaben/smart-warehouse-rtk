@@ -1,7 +1,7 @@
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload,noload
 from sqlalchemy.exc import IntegrityError
 
 from app.models.warehouse import Warehouse
@@ -106,7 +106,16 @@ class WarehouseRepository:
             raise e
 
     async def get_all(self, limit: int = 100, offset: int = 0) -> list[Warehouse]:
-        result = await self.session.execute(
-            select(Warehouse).limit(limit).offset(offset)
+        stmt = (
+        select(Warehouse)
+        .options(
+            noload(Warehouse.products),
+            noload(Warehouse.robots),
+            noload(Warehouse.inventory_history),
         )
+        .order_by(Warehouse.id)            # детерминированность + индекс по PK
+        .limit(limit)
+        .offset(offset)
+        )
+        result = await self.session.execute(stmt)
         return list(result.scalars().all())

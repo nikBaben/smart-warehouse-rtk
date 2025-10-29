@@ -1,422 +1,657 @@
 from __future__ import annotations
+# === Segfault hardening: отключаем C-extensions SQLAlchemy и GC у greenlet ДО импортов sqlalchemy
+import os as _os
+_os.environ.setdefault("SQLALCHEMY_DISABLE_CEXT", "1")
+_os.environ.setdefault("GREENLET_USE_GC", "0")  # опционально; снижает шанс падений при GC
 
+"""
+Эмулятор робота с БД и шиной событий + multiprocessing.
+
+Анти-лаги и стабильность:
+- Fast scanner loop: быстрый цикл каждые FAST_SCAN_INTERVAL_MS, завершает сканы вне общей очереди.
+- Приоритет тиков для сканирующих + round-robin окно ROBOTS_PER_TICK для остальных.
+- «Двойное» определение сканирующих (in-memory таймер ИЛИ статус в снапшоте) — не залипают после рестартов.
+- Fail-safe завершение скана (_safe_finish_scan): при ошибке очищает состояние и шлёт product.scan с reason=scan_error.
+- Watchdog SCAN_MAX_DURATION_MS: форс-завершение, если скан висит слишком долго.
+- In-memory снапшот позиций: robot.positions / robot.positions.diff + keepalive.
+- Версионирование снапшота, прогрев из БД, мягкий rate-limit, per-tick кэш eligibility, lazy goal refresh.
+
+Запуск:
+    asyncio.run(run_robot_watcher())          # однопроцессный
+    asyncio.run(run_robot_watcher_mproc())    # по процессу на склад (и по нескольким процессам на склад — см. ROBOTS_PER_PROC)
+
+С мультипроцессом «как раньше» (единый robot.positions и настоящая глобальная бронь):
+    export USE_REDIS_COORD=1
+    export USE_REDIS_CLAIMS=1
+    export REDIS_URL="redis://localhost:6379/0"
+"""
+
+from uuid import uuid4
 import asyncio
-import random
-import uuid
-import threading
-import queue
 import os
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Tuple, Optional, Set, Callable, Awaitable, Union
+import json
+import random
+import multiprocessing as mp
+import signal
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional, Set, Tuple
 
-# POSIX file-lock для синглтона
+from sqlalchemy import func, insert, select, update
+from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine
+from sqlalchemy.orm import load_only
+
+# redis asyncio (redis>=4)
 try:
-    import fcntl  # type: ignore
-except Exception:  # pragma: no cover
-    fcntl = None  # на Windows просто не используем файловый лок
+    from redis import asyncio as aioredis
+except Exception:  # пакет не установлен — координация/бронь можно выключить
+    aioredis = None  # type: ignore
 
-from sqlalchemy import select, distinct, func, delete
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine, AsyncEngine
-from sqlalchemy.orm import selectinload
-
-# settings может и не содержать DATABASE_URL — это ок, ниже больше не полагаемся на него напрямую
-from app.core.config import settings
-# ВАЖНО: импортируем ДВЕ janus-очереди
-from app.ws.ws_manager import EVENTS_COMMON, EVENTS_ROBOT
+from app.db.session import async_session as AppSession
+from app.core.config import settings  # noqa: F401
 from app.models.warehouse import Warehouse
+# models
+from app.models.robot_history import RobotHistory  # <-- имя подставь своё, если отличается
+
 from app.models.robot import Robot
 from app.models.product import Product
 from app.models.inventory_history import InventoryHistory
-from app.service.robot_history import write_robot_status_event  # лог статусов
 
+from app.events.bus import (
+    get_bus_for_current_loop,
+    close_bus_for_current_loop,
+    ROBOT_CH,
+    COMMON_CH,
+)
 
-# =========================
-# Управление форматом событий позиции
-# =========================
-EMIT_POSITION_PER_ROBOT = True   # одиночные события для каждого робота
-EMIT_POSITION_BATCH = False      # один батч на склад за тик
-
-# =========================
-# Параметры поля / зарядки / сканирования
-# =========================
-DOCK_X, DOCK_Y = 0, 0                    # док-станция — ровно (0,0)
-SCAN_DURATION = timedelta(seconds=5)     # длительность скана
-CHARGE_DURATION = timedelta(minutes=15)  # длительность полной зарядки до 100%
-MIN_BATT_DROP_PER_STEP = 0.2             # ниже расход на шаг (в процентах)
-# делаем рескан «тише», чтобы не штормить WS
-RESCAN_COOLDOWN = timedelta(minutes=3)   # повторный скан того же товара — не чаще чем раз в 3 минуты
+# ====== Флаги распределённой координации (по умолчанию выключено) ============
+USE_REDIS_COORD = os.getenv("USE_REDIS_COORD", "1") == "1"   # общий снапшот и единый robot.positions
+USE_REDIS_CLAIMS = os.getenv("USE_REDIS_CLAIMS", "1") == "1" # глобальная бронь ячеек
+REDIS_URL = os.getenv("REDIS_URL", "redis://myapp-redis:6379/0")
+CLAIM_TTL_MS = int(os.getenv("CLAIM_TTL_MS", "120000"))      # TTL блокировок клеток
+COORDINATOR_SHARD_INDEX = int(os.getenv("COORDINATOR_SHARD_INDEX", "0"))
 
 # =========================
-# Конфигурация логирования истории робота (оптимизация нагрузки на БД)
+# Константы симуляции
 # =========================
-LOG_EVERY_TICK = False                          # если True — лог как раньше, каждый тик
-TICK_LOG_MIN_INTERVAL = timedelta(seconds=15)   # минимальный интервал heartbeat-логов при неизменном состоянии
+FIELD_X = 50
+FIELD_Y = 26
+DOCK_X, DOCK_Y = 0, 0
 
-# =========================
-# Память процесса + блокировки (для потокобезопасности)
-# =========================
-_TARGETS: Dict[str, Tuple[int, int]] = {}
-_CLAIMED_TARGETS: Dict[str, Set[Tuple[int, int]]] = {}
-_SCANNING_UNTIL: Dict[str, datetime] = {}
-_SCANNING_TARGET: Dict[str, Tuple[int, int]] = {}
-_CHARGE_ACCUM: Dict[str, float] = {}
-_LAST_EMITTED_STATE: Dict[str, Tuple[int, int, str, int]] = {}
-_LAST_LOGGED_STATE: Dict[str, Tuple[int, int, str, int]] = {}
-_LAST_HISTORY_AT: Dict[str, datetime] = {}
+TICK_INTERVAL = float(os.getenv("ROBOT_TICK_INTERVAL", "0.5"))
+SCAN_DURATION = timedelta(seconds=int(os.getenv("SCAN_DURATION_SEC", "6")))
+RESCAN_COOLDOWN = timedelta(seconds=int(os.getenv("RESCAN_COOLDOWN_SEC", "30")))
+CHARGE_DURATION = timedelta(seconds=int(os.getenv("CHARGE_DURATION_SEC", "45")))
+LOW_BATTERY_THRESHOLD = float(os.getenv("LOW_BATTERY_THRESHOLD", "15"))
 
-_LOCK_TARGETS = threading.RLock()
-_LOCK_SCAN = threading.RLock()
-
-# Кеш клеток с товарами на склад (TTL)
-_PRODUCT_CELLS_CACHE: Dict[str, Tuple[datetime, List[Tuple[int, int]]]] = {}
-PRODUCT_CELLS_TTL = timedelta(seconds=90)
-
-# Кэш последних сканов по складу: product_id -> max(created_at) (TTL)
-_LAST_SCAN_CACHE: Dict[str, Tuple[datetime, Dict[str, datetime]]] = {}
-LAST_SCAN_TTL = timedelta(seconds=30)
-
-# Ограничитель конкурентных роботов на склад
-_MAX_CONCURRENT_ROBOTS_PER_WAREHOUSE = 8
+BATTERY_DROP_PER_STEP = float(os.getenv("BATTERY_DROP_PER_STEP", "0.6"))
+POSITION_RATE_LIMIT_PER_ROBOT = float(os.getenv("POSITION_RATE_LIMIT_SEC", "0.25"))
+ROBOTS_CONCURRENCY = int(os.getenv("ROBOT_CONCURRENCY", "12"))
 
 # =========================
-# Антизасор: события, ретеншн и клининг
+# Параметры позиций/шины
 # =========================
-EVENT_QUEUE_MAXSIZE = int(os.getenv("EVENT_QUEUE_MAXSIZE", "10000"))
-EVENT_QUEUE_DROP_OLDEST = True  # при переполнении выбрасываем самый старый элемент
+POSITIONS_MIN_INTERVAL_MS = int(os.getenv("POSITIONS_MIN_INTERVAL_MS", "75"))
+POSITIONS_KEEPALIVE_MS = int(os.getenv("POSITIONS_KEEPALIVE_MS", "1000"))
+KEEPALIVE_FULL = os.getenv("KEEPALIVE_FULL", "1") == "1"
+POSITIONS_DIFFS = os.getenv("POSITIONS_DIFFS", "0") == "1"
+# === БЫЛ БАГ: флаг одиночных позиций был инвертирован. Фикс:
+SEND_ROBOT_POSITION = os.getenv("SEND_ROBOT_POSITION", "1") == "0"
 
-INVENTORY_HISTORY_RETENTION = timedelta(hours=6)   # сколько держим полные сканы
-INVENTORY_HISTORY_CLEAN_CHUNK = 1000               # сколько записей удаляем за проход
-WAREHOUSE_JANITOR_EVERY = timedelta(minutes=5)     # частота служебной уборки per warehouse
+# Разрежённый поиск цели
+IDLE_GOAL_LOOKUP_EVERY = int(os.getenv("IDLE_GOAL_LOOKUP_EVERY", "2"))
+
+# Round-robin окно по складу
+ROBOTS_PER_TICK = int(os.getenv("ROBOTS_PER_TICK", "256"))
+
+# Fast scanner loop (ускоренное завершение сканов)
+FAST_SCAN_LOOP = os.getenv("FAST_SCAN_LOOP", "1") == "1"
+FAST_SCAN_INTERVAL_MS = int(os.getenv("FAST_SCAN_INTERVAL_MS", "75"))
+FAST_SCAN_MAX_PER_TICK = int(os.getenv("FAST_SCAN_MAX_PER_TICK", "512"))
+
+# Watchdog: максимум длительности скана (мс). По умолчанию x3 от SCAN_DURATION.
+SCAN_MAX_DURATION_MS = int(os.getenv(
+    "SCAN_MAX_DURATION_MS",
+    str(int(max(1.0, SCAN_DURATION.total_seconds()) * 3000))
+))
+
+# === Частота широковещания позиций (строго, независимо от нагрузки) ===========
+# раз в 1 секунду пытаемся отправить обновление; максимум 2 секунды без пакета (keepalive)
+POSITIONS_BROADCAST_INTERVAL_MS = int(os.getenv("POSITIONS_BROADCAST_INTERVAL_MS", "1000"))
+POSITIONS_MAX_INTERVAL_MS = int(os.getenv("POSITIONS_MAX_INTERVAL_MS", "2000"))
 
 # =========================
-# Rate-limit и типы «роботных» событий
+# Redis helpers (lazy pool)
 # =========================
-ROBOT_EVENT_TYPES = {"robot.position", "product.scan"}
-POSITION_RATE_LIMIT = timedelta(seconds=2)  # частота отправки позиций per-warehouse
-_LAST_POSITION_SENT_AT: Dict[str, datetime] = {}
+_redis_pool = None
 
-# =========================
-# Синглтон-гарды для вотчера
-# =========================
-_WATCHER_RUNNING = False
-_LOCK_FILE_HANDLE = None  # type: ignore
-DEFAULT_WATCHER_LOCK_PATH = os.environ.get("ROBOT_WATCHER_LOCK", "/tmp/robot_watcher.lock")
+async def _get_redis():
+    global _redis_pool
+    if not (USE_REDIS_COORD or USE_REDIS_CLAIMS):
+        return None
+    if aioredis is None:
+        raise RuntimeError("redis[async] не установлен, а USE_REDIS_* = 1")
+    if _redis_pool is None:
+        _redis_pool = await aioredis.from_url(REDIS_URL, decode_responses=True)
+    return _redis_pool
 
-# расписание уборки per warehouse
-_WAREHOUSE_NEXT_JANITOR_AT: Dict[str, datetime] = {}
-
-
-def _try_acquire_process_lock(lock_path: Optional[str]) -> bool:
-    global _LOCK_FILE_HANDLE
-    if not lock_path or fcntl is None:
-        return True
-    try:
-        fh = open(lock_path, "w")
-        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fh.write(f"pid={os.getpid()} time={datetime.now(timezone.utc).isoformat()}\n")
-        fh.flush()
-        _LOCK_FILE_HANDLE = fh
-        return True
-    except BlockingIOError:
-        return False
-    except Exception:
-        return True
-
-
-def _release_process_lock():
-    global _LOCK_FILE_HANDLE
-    if _LOCK_FILE_HANDLE is None:
-        return
-    try:
-        if fcntl is not None:
-            fcntl.flock(_LOCK_FILE_HANDLE, fcntl.LOCK_UN)
-    finally:
+async def _close_redis():
+    global _redis_pool
+    if _redis_pool is not None:
         try:
-            _LOCK_FILE_HANDLE.close()
+            await _redis_pool.close()
         except Exception:
             pass
-        _LOCK_FILE_HANDLE = None
+        _redis_pool = None
+
+def _claim_key(warehouse_id: str, x: int, y: int) -> str:
+    return f"wh:{warehouse_id}:claim:{x}:{y}"
+
+def _robots_hash_key(warehouse_id: str) -> str:
+    return f"wh:{warehouse_id}:robots"
+
+def _robots_ver_key(warehouse_id: str) -> str:
+    return f"wh:{warehouse_id}:robots:ver"
+
+def _robots_last_sent_map_key(warehouse_id: str) -> str:
+    return f"wh:{warehouse_id}:robots:lastsent"
+
+# =========================
+# Память процесса
+# =========================
+_TARGETS: Dict[str, Tuple[int, int]] = {}
+_SCANNING_UNTIL: Dict[str, datetime] = {}
+_SCANNING_CELL: Dict[str, Tuple[int, int]] = {}
+_SCANNING_STARTED_AT: Dict[str, datetime] = {}
+_LAST_POS_SENT_AT: Dict[str, datetime] = {}                   # per-robot
+_CLAIMED: Dict[str, Set[Tuple[int, int]]] = {}                # per-warehouse (локально; при USE_REDIS_CLAIMS используется лишь как cache)
+
+# In-memory снапшот состояний роботов по складу (локальный; для Redis-координации он тоже заполняется, но публикует координатор)
+_WH_SNAPSHOT: Dict[str, Dict[str, dict]] = {}
+_WH_SNAPSHOT_VER: Dict[str, int] = {}
+_WH_LAST_SENT_VER: Dict[str, int] = {}
+_WH_LAST_SENT_MAP: Dict[str, Dict[str, dict]] = {}
+_LAST_POS_BROADCAST_AT: Dict[str, float] = {}
+_LAST_ANY_SENT_AT: Dict[str, float] = {}
+_WH_LOCKS: Dict[str, asyncio.Lock] = {}
+
+# per-tick cache для eligibility
+_ELIGIBLE_CACHE: Dict[str, dict] = {}
+_WH_TICK_COUNTER: Dict[str, int] = {}
+
+# Планировщик/приоритеты
+_ROBOT_WH: Dict[str, str] = {}           # robot_id -> warehouse_id
+_WH_ROBOT_OFFSET: Dict[str, int] = {}    # смещение окна по складу
+
+# Fast scanner task registry
+_WH_FASTSCAN_TASK: Dict[str, asyncio.Task] = {}  # wh -> task
+
+# Positions broadcaster task registry
+_WH_POS_TASK: Dict[str, asyncio.Task] = {}  # wh -> task
+
+# ---- Идемпотентность завершения сканов (Вариант B)
+_SCANNING_FINISHING: Dict[str, bool] = {}              # rid -> True, если завершение уже начато
+_SCAN_LOCKS: Dict[str, asyncio.Lock] = {}              # rid -> lock для атомарных проверок
+
+def _scan_lock(rid: str) -> asyncio.Lock:
+    lk = _SCAN_LOCKS.get(rid)
+    if lk is None:
+        lk = _SCAN_LOCKS[rid] = asyncio.Lock()
+    return lk
+
+
+
+# Текущий шард (для справки/логики)
+_SHARD_IDX = 0
+_SHARD_COUNT = 1
+def _set_shard(idx: int, count: int) -> None:
+    global _SHARD_IDX, _SHARD_COUNT
+    _SHARD_IDX, _SHARD_COUNT = idx, max(1, count)
 
 # =========================
 # Утилиты координат/полок
 # =========================
-
-def shelf_str_to_num(s: Optional[str]) -> int:
-    if s is None:
-        return 1
-    s = s.strip()
-    if s == "0":
-        return 0
-    if not s:
-        return 1
-    c = s.upper()[:1]
-    return (ord(c) - ord("A")) + 1 if "A" <= c <= "Z" else 1
-
+ALPH = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 def shelf_num_to_str(n: int) -> str:
-    if n <= 0:
-        return "0"
-    n = min(26, int(n))
-    return chr(ord("A") + (n - 1))
+    return ALPH[max(0, min(25, n - 1))] if n > 0 else "0"
 
+def shelf_str_to_num(s: Optional[str]) -> int:
+    if not s:
+        return 0
+    s = s.strip().upper()
+    if not s or s == "0":
+        return 0
+    c = s[0]
+    return ALPH.index(c) + 1 if c in ALPH else 0
 
-def _bounded(v: int, lo: int, hi: int) -> int:
-    return max(lo, min(hi, v))
+def clamp_xy(x: int, y: int) -> Tuple[int, int]:
+    x = max(0, min(FIELD_X - 1, x))
+    y = max(0, min(FIELD_Y, y))
+    return x, y
 
-
-def _manhattan(a: Tuple[int, int], b: Tuple[int, int]) -> int:
+def manhattan(a: Tuple[int, int], b: Tuple[int, int]) -> int:
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
+def _claimed_set(warehouse_id: str) -> Set[Tuple[int, int]]:
+    return _CLAIMED.setdefault(warehouse_id, set())
 
-def _next_step_towards(start: Tuple[int, int], goal: Tuple[int, int]) -> Tuple[int, int]:
-    if start == goal:
-        return start
-    sx, sy = start
-    gx, gy = goal
-    dx, dy = gx - sx, gy - sy
-    choices: List[Tuple[int, int]] = []
-    if dx != 0:
-        choices.append((sx + (1 if dx > 0 else -1), sy))
-    if dy != 0:
-        choices.append((sx, sy + (1 if dy > 0 else -1)))
-    return random.choice(choices) if choices else start
+def _claim_local(warehouse_id: str, cell: Tuple[int, int]) -> None:
+    _claimed_set(warehouse_id).add(cell)
 
+def _free_claim_local(warehouse_id: str, cell: Tuple[int, int]) -> None:
+    _claimed_set(warehouse_id).discard(cell)
 
-def _neighbors(start: Tuple[int, int], max_x: int, max_y: int) -> List[Tuple[int, int]]:
-    """Соседние клетки по Манхэттену (4-связность) с учётом границ поля (y ∈ [1..max_y])."""
-    sx, sy = start
-    cand = [
-        (sx + 1, sy), (sx - 1, sy),
-        (sx, sy + 1), (sx, sy - 1),
-    ]
-    res: List[Tuple[int, int]] = []
-    for x, y in cand:
-        if 0 <= x <= max_x and 1 <= y <= max_y:
-            res.append((x, y))
-    return res
+async def _claim_global(warehouse_id: str, cell: Tuple[int, int]) -> bool:
+    """Глобальная бронь через Redis SET NX PX; если USE_REDIS_CLAIMS=0, используем локальную."""
+    if not USE_REDIS_CLAIMS:
+        _claim_local(warehouse_id, cell)
+        return True
+    r = await _get_redis()
+    x, y = cell
+    ok = await r.set(_claim_key(warehouse_id, x, y), "1", nx=True, px=CLAIM_TTL_MS)
+    return bool(ok)
 
+async def _free_claim_global(warehouse_id: str, cell: Tuple[int, int]) -> None:
+    if not USE_REDIS_CLAIMS:
+        _free_claim_local(warehouse_id, cell)
+        return
+    r = await _get_redis()
+    x, y = cell
+    await r.delete(_claim_key(warehouse_id, x, y))
 
-def _random_wander_target(start: Tuple[int, int], max_x: int, max_y: int) -> Tuple[int, int]:
-    """Цель для «бродяжничества», когда нет кандидатов для сканирования."""
-    opts = [p for p in _neighbors(start, max_x, max_y) if p != start]
-    return random.choice(opts) if opts else start
+def _wh_lock(warehouse_id: str) -> asyncio.Lock:
+    lk = _WH_LOCKS.get(warehouse_id)
+    if lk is None:
+        lk = _WH_LOCKS[warehouse_id] = asyncio.Lock()
+    return lk
 
-# =========================
-# Главный sessionmaker для главного лупа (общий на процесс)
-# =========================
+def _wh_snapshot(warehouse_id: str) -> Dict[str, dict]:
+    return _WH_SNAPSHOT.setdefault(warehouse_id, {})
 
-def _session_factory_main() -> async_sessionmaker[AsyncSession]:
-    from app.db.session import async_session as app_sessionmaker
-    return app_sessionmaker
+def _last_sent_map(warehouse_id: str) -> Dict[str, dict]:
+    return _WH_LAST_SENT_MAP.setdefault(warehouse_id, {})
 
-# ---------- НОВОЕ: надёжное определение DSN и фабрика engine/session под ТЕКУЩИЙ loop ----------
+def _next_tick_id(warehouse_id: str) -> int:
+    _WH_TICK_COUNTER[warehouse_id] = _WH_TICK_COUNTER.get(warehouse_id, 0) + 1
+    return _WH_TICK_COUNTER[warehouse_id]
 
-def _resolve_db_url() -> str:
+def _get_tick_cache(warehouse_id: str, tick_id: int) -> dict:
+    c = _ELIGIBLE_CACHE.get(warehouse_id)
+    if not c or c.get("tick_id") != tick_id:
+        c = _ELIGIBLE_CACHE[warehouse_id] = {
+            "cells": None,
+            "by_cell": {},
+            "cutoff": None,
+            "tick_id": tick_id,
+            "local_selected": set(),  # локально выбранные клетки на этот тик склада
+        }
+    return c
+
+# ===== журнал статусов робота ================================================
+async def _log_robot_status(session: AsyncSession, robot: Robot, status: str) -> None:
     """
-    Берём URL из уже сконфигурированного главного sessionmaker (его bind.url).
-    Если вдруг недоступно — пробуем переменные окружения.
+    Пишет строку в таблицу журналов статусов (id генерит БД или можно сгенерить тут).
     """
     try:
-        main_maker = _session_factory_main()
-        # В разных версиях SQLAlchemy доступ к bind может лежать по-разному
-        eng = getattr(main_maker, "bind", None)
-        if eng is None:
-            eng = getattr(main_maker, "kw", {}).get("bind")  # fallback для 2.x
-        if eng is not None:
-            try:
-                # 2.x
-                return eng.url.render_as_string(hide_password=False)
-            except Exception:
-                # 1.4 стиль
-                return str(eng.url)
-    except Exception:
-        pass
+        await session.execute(
+            insert(RobotHistory).values(
+                id = str(uuid4()),
 
-    for key in ("DATABASE_URL", "SQLALCHEMY_DATABASE_URI", "DB_DSN"):
-        v = os.getenv(key)
-        if v:
-            return v
-
-    # Последняя попытка — вдруг в settings под другим именем
-    for attr in ("DATABASE_URL", "SQLALCHEMY_DATABASE_URI", "DB_DSN"):
-        if hasattr(settings, attr):
-            return getattr(settings, attr)  # type: ignore
-
-    raise RuntimeError(
-        "Не удалось определить URL базы данных: нет bind у основного sessionmaker, "
-        "и не найдены переменные окружения DATABASE_URL/SQLALCHEMY_DATABASE_URI/DB_DSN."
-    )
-
-
-def _session_factory_for_current_loop() -> tuple[async_sessionmaker[AsyncSession], AsyncEngine]:
-    """
-    Создаёт НОВЫЙ AsyncEngine и async_sessionmaker, привязанные к текущему event loop.
-    Важно: не делим engine между разными лупами/тредами.
-    """
-    db_url = _resolve_db_url()
-    engine = create_async_engine(
-        db_url,
-        pool_size=5,
-        max_overflow=10,
-        pool_pre_ping=True,
-    )
-    maker = async_sessionmaker(engine, expire_on_commit=False)
-    return maker, engine
-
-# =========================
-# Логирование статуса — оптимизированное
-# =========================
-async def _log_status_every_tick(session: AsyncSession, robot: Robot) -> None:
-    if LOG_EVERY_TICK:
-        with session.no_autoflush:
-            await write_robot_status_event(session, robot.id)
-        return
-
-    now = datetime.now(timezone.utc)
-    batt_int = int(round(float(robot.battery_level or 0.0)))
-    key = (int(robot.current_row or 0), int(robot.current_shelf or 0), (robot.status or "idle"), batt_int)
-    last_key = _LAST_LOGGED_STATE.get(robot.id)
-    last_ts = _LAST_HISTORY_AT.get(robot.id, datetime.fromtimestamp(0, tz=timezone.utc))
-
-    if (key == last_key) and (now - last_ts < TICK_LOG_MIN_INTERVAL):
-        return
-
-    with session.no_autoflush:
-        await write_robot_status_event(session, robot.id)
-
-    _LAST_LOGGED_STATE[robot.id] = key
-    _LAST_HISTORY_AT[robot.id] = now
-
-
-def _touch_robot(robot: Robot) -> None:
-    robot.last_update = datetime.now(timezone.utc)
-
-# =========================
-# Работа с товарами / сканирование
-# =========================
-async def _product_cells(session: AsyncSession, warehouse_id: str) -> List[Tuple[int, int]]:
-    q = (
-        select(distinct(Product.current_row), Product.current_shelf)
-        .where(Product.warehouse_id == warehouse_id)
-    )
-    rows = await session.execute(q)
-    cells: List[Tuple[int, int]] = []
-    for r, shelf_str in rows.all():
-        x = int(r or 0)
-        y = shelf_str_to_num(shelf_str)
-        if y <= 0:
-            continue
-        cells.append((x, y))
-    return cells
-
-
-async def _product_cells_cached(session: AsyncSession, warehouse_id: str) -> List[Tuple[int, int]]:
-    now = datetime.now(timezone.utc)
-    cached = _PRODUCT_CELLS_CACHE.get(warehouse_id)
-    if cached and (now - cached[0]) < PRODUCT_CELLS_TTL:
-        return cached[1]
-    cells = await _product_cells(session, warehouse_id)
-    _PRODUCT_CELLS_CACHE[warehouse_id] = (now, cells)
-    return cells
-
-
-async def _last_scans_map(session: AsyncSession, warehouse_id: str) -> Dict[str, datetime]:
-    now = datetime.now(timezone.utc)
-    cached = _LAST_SCAN_CACHE.get(warehouse_id)
-    if cached and (now - cached[0]) < LAST_SCAN_TTL:
-        return cached[1]
-
-    q = (
-        select(
-            InventoryHistory.product_id,
-            func.max(InventoryHistory.created_at)
+                robot_id=robot.id,
+                warehouse_id=robot.warehouse_id,
+                status=status,
+                created_at=datetime.now(timezone.utc),
+            )
         )
-        .where(InventoryHistory.warehouse_id == warehouse_id)
-        .group_by(InventoryHistory.product_id)
+        # flush не нужен отдельно — мы и так в транзакциях с .begin()
+    except Exception as e:
+        # не ломаем основной поток симуляции из-за лога
+        print(f"⚠️ robot status log failed rid={robot.id} status={status}: {e}", flush=True)
+
+
+# =========================
+# События
+# =========================
+async def _emit(evt: dict) -> None:
+    t = evt.get("type", "")
+    ch = ROBOT_CH if t.startswith("robot.position") or t in {
+        "robot.positions", "robot.positions.diff", "robot.positions.keepalive", "product.scan"
+    } else COMMON_CH
+    bus = await get_bus_for_current_loop()
+    await bus.publish(ch, evt)
+
+async def _emit_position_if_needed(robot: Robot) -> None:
+    if not SEND_ROBOT_POSITION:
+        return
+    now = datetime.now(timezone.utc)
+    last = _LAST_POS_SENT_AT.get(robot.id, datetime.fromtimestamp(0, tz=timezone.utc))
+    if (now - last).total_seconds() < POSITION_RATE_LIMIT_PER_ROBOT:
+        return
+    _LAST_POS_SENT_AT[robot.id] = now
+    y = int(robot.current_shelf or 0)
+    await _emit({
+        "type": "robot.position",
+        "warehouse_id": robot.warehouse_id,
+        "robot_id": robot.id,
+        "x": int(robot.current_row or 0),
+        "y": y,
+        "shelf": shelf_num_to_str(y),
+        "battery_level": round(float(robot.battery_level or 0.0), 1),
+        "status": (robot.status or "idle"),
+        "ts": now.isoformat(),
+    })
+
+# === Снапшот склада ===========================================================
+async def _write_robot_to_redis(robot: Robot, item: dict) -> None:
+    """Записывает позицию робота в Redis Hash для координации единого robot.positions."""
+    if not USE_REDIS_COORD:
+        return
+    r = await _get_redis()
+    key = _robots_hash_key(robot.warehouse_id)
+    await r.hset(key, robot.id, json.dumps(item))
+
+def _update_wh_snapshot_from_robot(robot: Robot) -> None:
+    wh = robot.warehouse_id
+    _ROBOT_WH[robot.id] = wh
+
+    y_int = int(robot.current_shelf or 0)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # «база» без updated_at — чтобы корректно сравнить, менялось ли что-то существенное
+    base = {
+        "robot_id": robot.id,
+        "x": int(robot.current_row or 0),
+        "y": y_int,
+        "shelf": shelf_num_to_str(y_int),
+        "battery_level": round(float(robot.battery_level or 0.0), 1),
+        "status": (robot.status or "idle"),
+    }
+
+    snap = _wh_snapshot(wh)
+    old_item = snap.get(robot.id) or {}
+
+    # сравниваем только значимые поля; updated_at не учитываем
+    changed = {k: old_item.get(k) for k in base.keys()} != base
+
+    # если что-то поменялось — обновляем updated_at, иначе сохраняем прежний
+    updated_at = now_iso if changed else (old_item.get("updated_at") or now_iso)
+
+    new_item = dict(base, updated_at=updated_at)
+
+    if old_item != new_item:
+        snap[robot.id] = new_item
+        _WH_SNAPSHOT_VER[wh] = _WH_SNAPSHOT_VER.get(wh, 0) + 1
+        if USE_REDIS_COORD:
+            asyncio.create_task(_write_robot_to_redis(robot, new_item))
+
+def _is_scanning_in_snapshot(warehouse_id: str, rid: str) -> bool:
+    item = _wh_snapshot(warehouse_id).get(rid)
+    return bool(item and (item.get("status") or "").lower() == "scanning")
+
+# === DIFF helpers =============================================================
+def _calc_diff_payload(warehouse_id: str, snap: Dict[str, dict]) -> Tuple[List[dict], List[str]]:
+    last = _last_sent_map(warehouse_id)
+    changed: List[dict] = []
+    removed: List[str] = []
+    for rid, item in snap.items():
+        if last.get(rid) != item:
+            changed.append(item)
+    for rid in list(last.keys()):
+        if rid not in snap:
+            removed.append(rid)
+    return changed, removed
+
+def _remember_last_sent_map(warehouse_id: str, snap: Dict[str, dict]) -> None:
+    _WH_LAST_SENT_MAP[warehouse_id] = {rid: dict(item) for rid, item in snap.items()}
+
+# === Пакетные позиции (full/diff + keepalive) =================================
+async def _maybe_emit_positions_snapshot_inmem(warehouse_id: str) -> None:
+    """Локальный rate-limitер отправки; при USE_REDIS_COORD в дело вступает координаторный broadcaster."""
+    if USE_REDIS_COORD:
+        return  # публикацию полных позиций выполняет только координаторный broadcaster
+    loop = asyncio.get_running_loop()
+    now_mono = loop.time()
+    last_any = _LAST_ANY_SENT_AT.get(warehouse_id, 0.0)
+    need_keepalive = (now_mono - last_any) * 1000.0 >= POSITIONS_KEEPALIVE_MS
+    last_rl = _LAST_POS_BROADCAST_AT.get(warehouse_id, 0.0)
+    rl_ok = (now_mono - last_rl) * 1000.0 >= POSITIONS_MIN_INTERVAL_MS
+
+    async with _wh_lock(warehouse_id):
+        now_mono = loop.time()
+        need_keepalive = need_keepalive or ((now_mono - _LAST_ANY_SENT_AT.get(warehouse_id, 0.0)) * 1000.0 >= POSITIONS_KEEPALIVE_MS)
+        rl_ok = rl_ok and ((now_mono - _LAST_POS_BROADCAST_AT.get(warehouse_id, 0.0)) * 1000.0 >= POSITIONS_MIN_INTERVAL_MS)
+
+        cur_ver = _WH_SNAPSHOT_VER.get(warehouse_id, 0)
+        last_sent_ver = _WH_LAST_SENT_VER.get(warehouse_id, -1)
+        snap_dict = _wh_snapshot(warehouse_id)
+
+        has_changes = cur_ver != last_sent_ver
+        have_data = bool(snap_dict)
+
+        if not have_data and not need_keepalive:
+            return
+
+        if has_changes and rl_ok and have_data:
+            payload_ts = datetime.now(timezone.utc).isoformat()
+            if POSITIONS_DIFFS:
+                changed, removed = _calc_diff_payload(warehouse_id, snap_dict)
+                if changed or removed:
+                    await _emit({
+                        "type": "robot.positions.diff",
+                        "warehouse_id": warehouse_id,
+                        "version": cur_ver,
+                        "base_version": last_sent_ver,
+                        "changed": changed,
+                        "removed": removed,
+                        "ts": payload_ts,
+                    })
+                    _remember_last_sent_map(warehouse_id, snap_dict)
+                    _WH_LAST_SENT_VER[warehouse_id] = cur_ver
+                    _LAST_POS_BROADCAST_AT[warehouse_id] = loop.time()
+                    _LAST_ANY_SENT_AT[warehouse_id] = _LAST_POS_BROADCAST_AT[warehouse_id]
+                    return
+            await _emit({
+                "type": "robot.positions",
+                "warehouse_id": warehouse_id,
+                "robots": list(snap_dict.values()),
+                "version": cur_ver,
+                "ts": payload_ts,
+            })
+            _remember_last_sent_map(warehouse_id, snap_dict)
+            _WH_LAST_SENT_VER[warehouse_id] = cur_ver
+            _LAST_POS_BROADCAST_AT[warehouse_id] = loop.time()
+            _LAST_ANY_SENT_AT[warehouse_id] = _LAST_POS_BROADCAST_AT[warehouse_id]
+            return
+
+        if need_keepalive:
+            payload_ts = datetime.now(timezone.utc).isoformat()
+            if POSITIONS_DIFFS and not KEEPALIVE_FULL:
+                await _emit({
+                    "type": "robot.positions.keepalive",
+                    "warehouse_id": warehouse_id,
+                    "version": cur_ver,
+                    "robot_count": len(snap_dict),
+                    "ts": payload_ts,
+                })
+            else:
+                await _emit({
+                    "type": "robot.positions",
+                    "warehouse_id": warehouse_id,
+                    "robots": list(snap_dict.values()),
+                    "version": cur_ver,
+                    "ts": payload_ts,
+                })
+                _remember_last_sent_map(warehouse_id, snap_dict)
+                _WH_LAST_SENT_VER[warehouse_id] = cur_ver
+                _LAST_POS_BROADCAST_AT[warehouse_id] = loop.time()
+            _LAST_ANY_SENT_AT[warehouse_id] = loop.time()
+            return
+
+# === Немедленная отсылка полного снапшота (без rate-limit) ===================
+async def _emit_positions_snapshot_force(warehouse_id: str) -> None:
+    if USE_REDIS_COORD:
+        return  # публикация выполняется координатором
+    async with _wh_lock(warehouse_id):
+        snap_dict = _wh_snapshot(warehouse_id)
+        payload = list(snap_dict.values())
+        cur_ver = _WH_SNAPSHOT_VER.get(warehouse_id, 0)
+    if not payload:
+        return
+    await _emit({
+        "type": "robot.positions",
+        "warehouse_id": warehouse_id,
+        "robots": payload,
+        "version": cur_ver,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    })
+    loop = asyncio.get_running_loop()
+    _remember_last_sent_map(warehouse_id, snap_dict)
+    _WH_LAST_SENT_VER[warehouse_id] = cur_ver
+    _LAST_POS_BROADCAST_AT[warehouse_id] = loop.time()
+    _LAST_ANY_SENT_AT[warehouse_id] = _LAST_POS_BROADCAST_AT[warehouse_id]
+
+# === Прогрев/синхронизация снапшота из БД ====================================
+async def _warmup_or_sync_snapshot(session: AsyncSession, warehouse_id: str, robot_ids: Optional[List[str]] = None) -> None:
+    if robot_ids is None:
+        r = await session.execute(select(Robot.id).where(Robot.warehouse_id == warehouse_id))
+        robot_ids = list(r.scalars().all())
+    if robot_ids:
+        res = await session.execute(
+            select(Robot.id, Robot.current_row, Robot.current_shelf, Robot.battery_level, Robot.status)
+            .where(Robot.warehouse_id == warehouse_id, Robot.id.in_(robot_ids))
+        )
+        db_rows = {rid: (x, y, battery, status) for rid, x, y, battery, status in res.all()}
+    else:
+        db_rows = {}
+    changed = False
+    async with _wh_lock(warehouse_id):
+        snap = _wh_snapshot(warehouse_id)
+        if robot_ids is not None:
+            for rid in list(snap.keys()):
+                if rid not in robot_ids:
+                    snap.pop(rid, None)
+                    changed = True
+        for rid in robot_ids:
+            x, y, battery, status = db_rows.get(rid, (0, 0, 0.0, "idle"))
+            _ROBOT_WH[rid] = warehouse_id
+            y_int = int(y or 0)
+            now_iso = datetime.now(timezone.utc).isoformat()
+            new_item = {
+                "robot_id": rid,
+                "x": int(x or 0),
+                "y": y_int,
+                "shelf": shelf_num_to_str(y_int),
+                "battery_level": round(float(battery or 0.0), 1),
+                "status": status or "idle",
+                "updated_at": (snap.get(rid) or {}).get("updated_at") or now_iso,  # стартовое значение
+            }
+            if snap.get(rid) != new_item:
+                snap[rid] = new_item
+                changed = True
+        if changed:
+            _WH_SNAPSHOT_VER[warehouse_id] = _WH_SNAPSHOT_VER.get(warehouse_id, 0) + 1
+
+# =========================
+# Выборки из БД
+# =========================
+async def _eligible_cells(session: AsyncSession, warehouse_id: str, cutoff: datetime) -> List[Tuple[int, int]]:
+    rows = await session.execute(
+        select(Product.current_row, func.upper(func.trim(Product.current_shelf)))
+        .where(
+            Product.warehouse_id == warehouse_id,
+            func.upper(func.trim(Product.current_shelf)) != "0",
+            (Product.last_scanned_at.is_(None)) | (Product.last_scanned_at < cutoff),
+        )
+        .distinct()
     )
-    rows = await session.execute(q)
-    mp = {pid: ts for pid, ts in rows.all()}
-    _LAST_SCAN_CACHE[warehouse_id] = (now, mp)
-    return mp
+    cells: List[Tuple[int, int]] = []
+    for x, shelf_str in rows.all():
+        y = shelf_str_to_num(shelf_str)
+        if y > 0:
+            x_int = int(x or 0)
+            if 0 <= x_int <= 49 and 1 <= y <= 26:
+                cells.append((x_int, y))
+    return cells
 
-
-async def _eligible_products_for_scan(
-    session: AsyncSession,
-    warehouse_id: str,
-    x: int,
-    y: int,
-    cutoff: datetime,
+async def _eligible_products_in_cell(
+    session: AsyncSession, warehouse_id: str, x: int, y: int, cutoff: datetime
 ) -> List[Product]:
-    shelf_letter = shelf_num_to_str(y)
-
-    q = (
+    shelf = shelf_num_to_str(y)
+    res = await session.execute(
         select(Product)
+        .options(
+            load_only(
+                Product.id, Product.name, Product.category, Product.article,
+                Product.stock, Product.min_stock, Product.optimal_stock,
+                Product.current_zone, Product.current_row, Product.current_shelf,
+            )
+        )
         .where(
             Product.warehouse_id == warehouse_id,
             Product.current_row == x,
-            Product.current_shelf == shelf_letter,
+            func.upper(func.trim(Product.current_shelf)) == shelf,
+            (Product.last_scanned_at.is_(None)) | (Product.last_scanned_at < cutoff),
         )
     )
-    rows = await session.execute(q)
-    products: List[Product] = list(rows.scalars().all())
-    if not products:
-        return []
+    return list(res.scalars().all())
 
-    last_map = await _last_scans_map(session, warehouse_id)
-    eligible: List[Product] = [
-        p for p in products
-        if (last_map.get(p.id) is None) or (last_map[p.id] < cutoff)
-    ]
-    return eligible
-
-
-async def _begin_scan(session: AsyncSession, robot: Robot, x: int, y: int) -> None:
+# =========================
+# Сканирование
+# =========================
+async def _start_scan(robot: Robot, x: int, y: int) -> None:
     robot.status = "scanning"
-    _touch_robot(robot)
-    await _log_status_every_tick(session, robot)
-    with _LOCK_SCAN:
-        _SCANNING_TARGET[robot.id] = (x, y)
-        _SCANNING_UNTIL[robot.id] = datetime.now(timezone.utc) + SCAN_DURATION
-
-    if EMIT_POSITION_PER_ROBOT:
-        _emit_position(robot.warehouse_id, robot.id, x, y, robot.status, float(robot.battery_level or 0.0))
-
+    _SCANNING_CELL[robot.id] = (x, y)
+    now = datetime.now(timezone.utc)
+    _SCANNING_STARTED_AT[robot.id] = now
+    _SCANNING_UNTIL[robot.id] = now + SCAN_DURATION
+    _update_wh_snapshot_from_robot(robot)
 
 async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
-    with _LOCK_SCAN:
-        rx, ry = _SCANNING_TARGET.pop(robot.id, (int(robot.current_row or 0), int(robot.current_shelf or 0)))
-        _SCANNING_UNTIL.pop(robot.id, None)
+    rx, ry = _SCANNING_CELL.pop(robot.id, (int(robot.current_row or 0), int(robot.current_shelf or 0)))
+    _SCANNING_UNTIL.pop(robot.id, None)
+    _SCANNING_STARTED_AT.pop(robot.id, None)
 
-    shelf_letter = shelf_num_to_str(ry)
-    result = await session.execute(
-        select(Product).where(
-            Product.warehouse_id == robot.warehouse_id,
-            Product.current_row == rx,
-            Product.current_shelf == shelf_letter,
-        )
-    )
-    products = list(result.scalars().all())
-
-    if products:
-        cutoff = datetime.now(timezone.utc) - RESCAN_COOLDOWN
-        last_map = await _last_scans_map(session, robot.warehouse_id)
-        products = [
-            p for p in products
-            if (last_map.get(p.id) is None) or (last_map[p.id] < cutoff)
-        ]
-
-    if not products:
-        _free_claim(robot.warehouse_id, (rx, ry))
+    shelf = shelf_num_to_str(ry)
+    if shelf == "0":
+        await _emit({
+            "type": "product.scan",
+            "warehouse_id": robot.warehouse_id,
+            "robot_id": robot.id,
+            "x": rx, "y": ry, "shelf": shelf,
+            "products": [],
+            "reason": "no_valid_shelf",
+        })
+        await _free_claim_global(robot.warehouse_id, (rx, ry))
         robot.status = "idle"
-        _touch_robot(robot)
-        await _log_status_every_tick(session, robot)
+        _update_wh_snapshot_from_robot(robot)
+        await _log_robot_status(session, robot, "idle")
         return
 
-    payload_products: List[dict] = []
-    history_rows: List[InventoryHistory] = []
+    cutoff = datetime.now(timezone.utc) - RESCAN_COOLDOWN
+    products = await _eligible_products_in_cell(session, robot.warehouse_id, rx, ry, cutoff)
+
     now_dt = datetime.now(timezone.utc)
     now_iso = now_dt.isoformat()
 
+    if not products:
+        await _emit({
+            "type": "product.scan",
+            "warehouse_id": robot.warehouse_id,
+            "robot_id": robot.id,
+            "x": rx, "y": ry, "shelf": shelf,
+            "products": [],
+            "reason": "under_cooldown",
+            "ts": now_iso,
+        })
+        await _free_claim_global(robot.warehouse_id, (rx, ry))
+        robot.status = "idle"
+        _update_wh_snapshot_from_robot(robot)
+        await _log_robot_status(session, robot, "idle")
+        return
+
+    rows: List[dict] = []
+    payload: List[dict] = []
     for p in products:
         stock = int(p.stock or 0)
         status = "ok"
@@ -425,591 +660,958 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
         elif p.optimal_stock is not None and stock < p.optimal_stock:
             status = "low"
 
-        history_rows.append(
-            InventoryHistory(
-                id=f"ih_{uuid.uuid4().hex[:10]}",
-                product_id=p.id,
-                robot_id=robot.id,
-                warehouse_id=robot.warehouse_id,
-                current_zone=getattr(p, "current_zone", "Хранение"),
-                current_row=rx,
-                current_shelf=shelf_letter,
-                name=p.name,
-                category=p.category,
-                article=getattr(p, "article", None) or "unknown",
-                stock=stock,
-                min_stock=p.min_stock,
-                optimal_stock=p.optimal_stock,
-                status=status,
-            )
+        rows.append(
+            {
+                "id": f"ih_{os.urandom(6).hex()}",
+                "product_id": p.id,
+                "robot_id": robot.id,
+                "warehouse_id": robot.warehouse_id,
+                "current_zone": getattr(p, "current_zone", "Хранение"),
+                "current_row": rx,
+                "current_shelf": shelf,
+                "name": p.name,
+                "category": p.category,
+                "article": getattr(p, "article", None) or "unknown",
+                "stock": stock,
+                "min_stock": p.min_stock,
+                "optimal_stock": p.optimal_stock,
+                "status": status,
+            }
         )
-        payload_products.append({
-            "id": p.id,
-            "name": p.name,
-            "category": p.category,
-            "article": getattr(p, "article", None),
-            "current_row": rx,
-            "current_shelf": shelf_letter,
-            "shelf_num": ry,
-            "stock": stock,
-            "status": status,
-            "scanned_at": now_iso,
-        })
+        payload.append(
+            {
+                "id": p.id, "name": p.name, "category": p.category, "article": getattr(p, "article", None),
+                "current_row": rx, "current_shelf": shelf, "shelf_num": ry,"current_zone": p.current_zone,
+                "stock": stock, "status": status, "scanned_at": now_iso,
+            }
+        )
 
-    with session.no_autoflush:
-        session.add_all(history_rows)
+    await session.execute(insert(InventoryHistory), rows)
+    await session.execute(
+        update(Product)
+        .where(Product.id.in_([r["product_id"] for r in rows]))
+        .values(last_scanned_at=now_dt)
+    )
 
-    _emit({
+    await _emit({
         "type": "product.scan",
         "warehouse_id": robot.warehouse_id,
         "robot_id": robot.id,
-        "x": rx,
-        "y": ry,
-        "shelf": shelf_letter,
-        "products": payload_products,
+        "x": rx, "y": ry, "shelf": shelf,
+        "products": payload,
+        "ts": now_iso,
     })
 
-    cached = _LAST_SCAN_CACHE.get(robot.warehouse_id)
-    if cached:
-        mp = dict(cached[1])
-        for p in products:
-            mp[p.id] = now_dt
-        _LAST_SCAN_CACHE[robot.warehouse_id] = (now_dt, mp)
-
-    _free_claim(robot.warehouse_id, (rx, ry))
-
+    await _free_claim_global(robot.warehouse_id, (rx, ry))
     robot.status = "idle"
-    _touch_robot(robot)
-    await _log_status_every_tick(session, robot)
+    _update_wh_snapshot_from_robot(robot)
+    await _log_robot_status(session, robot, "idle")
 
-# =========================
-# Энергия
-# =========================
+async def _safe_finish_scan(session: AsyncSession, robot: Robot) -> None:
+    """Идемпотентное завершение скана: атомарно «захватывает» право завершить и безопасно финализирует."""
+    # Шаг 1: атомарно проверяем/устанавливаем флаг «завершаем»
+    async with _scan_lock(robot.id):
+        # уже в процессе завершения — выходим
+        if _SCANNING_FINISHING.get(robot.id):
+            return
+        # если таймера уже нет и статус не scanning — ничего завершать
+        if (robot.id not in _SCANNING_UNTIL) and (robot.status or "").lower() != "scanning":
+            return
+        _SCANNING_FINISHING[robot.id] = True  # захватили право завершать
 
-def _drop_per_step_for_field(max_x: int, max_y: int) -> float:
-    steps_for_pass = max(1, max_x + max_y)
-    # делаем поле «экономнее» — примерно в 2 раза ниже базовый расход
-    drop = 100.0 / (steps_for_pass * 2.0)
-    return max(MIN_BATT_DROP_PER_STEP, drop)
-
-
-def _consume_battery(robot: Robot, drop_per_step: float) -> None:
-    lvl = float(robot.battery_level or 0.0)
-    robot.battery_level = max(0.0, lvl - drop_per_step)
-
-# =========================
-# Цели (без конфликтов) + потокобезопасность
-# =========================
-
-def _claimed_set(warehouse_id: str) -> Set[Tuple[int, int]]:
-    return _CLAIMED_TARGETS.setdefault(warehouse_id, set())
-
-
-def _free_claim(warehouse_id: str, target: Tuple[int, int]) -> None:
-    with _LOCK_TARGETS:
-        _claimed_set(warehouse_id).discard(target)
-
-
-def _claim(warehouse_id: str, target: Tuple[int, int]) -> None:
-    with _LOCK_TARGETS:
-        _claimed_set(warehouse_id).add(target)
-
-
-def _is_claimed(warehouse_id: str, target: Tuple[int, int]) -> bool:
-    with _LOCK_TARGETS:
-        return target in _claimed_set(warehouse_id)
-
-
-def _pick_goal(
-    warehouse_id: str,
-    start: Tuple[int, int],
-    candidates: List[Tuple[int, int]],
-    max_x: int,
-    max_y: int,
-) -> Tuple[int, int]:
-    if candidates:
-        best_d = None
-        bucket: List[Tuple[int, int]] = []
-        with _LOCK_TARGETS:
-            claimed = _claimed_set(warehouse_id)
-            for c in candidates:
-                if c in claimed:
-                    continue
-                d = _manhattan(start, c)
-                if best_d is None or d < best_d:
-                    best_d, bucket = d, [c]
-                elif d == best_d:
-                    bucket.append(c)
-            if bucket:
-                goal = random.choice(bucket)
-                claimed.add(goal)
-                return goal
-
-    # если кандидатов нет — ранний фолбэк к случайной свободной клетке
-    for _ in range(50):
-        gx = random.randint(0, max_x)
-        gy = random.randint(1, max_y)
-        goal = (gx, gy)
-        with _LOCK_TARGETS:
-            claimed = _claimed_set(warehouse_id)
-            if goal != start and goal not in claimed:
-                claimed.add(goal)
-                return goal
-
-    return start
-
-# =========================
-# Отправка событий (неблокирующая + антидубль, с разделением очередей)
-# =========================
-
-def _emit(evt: dict) -> None:
-    """Кладём событие в соответствующую janus-очередь: ROBOT или COMMON, с вытеснением старого при переполнении."""
-    q = EVENTS_ROBOT if evt.get("type") in ROBOT_EVENT_TYPES else EVENTS_COMMON
     try:
-        q.sync_q.put_nowait(evt)  # janus: синхронная сторона
-    except queue.Full:
-        # при переполнении — выбрасываем старый элемент ЭТОЙ ЖЕ очереди (не трогаем другую)
+        await _finish_scan(session, robot)
+    except Exception as e:
+        # Повтор текущей вашей логики safe-очистки и отправки reason=scan_error
+        rx, ry = int(robot.current_row or 0), int(robot.current_shelf or 0)
+        _SCANNING_CELL.pop(robot.id, None)
+        _SCANNING_UNTIL.pop(robot.id, None)
+        _SCANNING_STARTED_AT.pop(robot.id, None)
+        await _free_claim_global(robot.warehouse_id, (rx, ry))
+        robot.status = "idle"
+        await session.flush()
+        _update_wh_snapshot_from_robot(robot)
+        await _log_robot_status(session, robot, "idle")
         try:
-            q.sync_q.get_nowait()
+            await _emit({
+                "type": "product.scan",
+                "warehouse_id": robot.warehouse_id,
+                "robot_id": robot.id,
+                "x": rx, "y": ry, "shelf": shelf_num_to_str(ry),
+                "products": [],
+                "reason": "scan_error",
+                "error": (str(e) or "")[:200],
+                "ts": datetime.now(timezone.utc).isoformat(),
+            })
         except Exception:
             pass
-        try:
-            q.sync_q.put_nowait(evt)
-        except Exception:
-            pass
-    except Exception:
-        pass
+        print(f"⚠️ safe_finish_scan: error rid={robot.id}: {e}", flush=True)
+    finally:
+        # Снимаем флаг завершения
+        async with _scan_lock(robot.id):
+            _SCANNING_FINISHING.pop(robot.id, None)
 
-
-def _emit_position(warehouse_id: str, robot_id: str, x: int, y: int, status: str, battery_level: float) -> None:
-    # коалесинг по состоянию
-    batt_int = int(round(battery_level))
-    key = (x, y, status or "idle", batt_int)
-    last = _LAST_EMITTED_STATE.get(robot_id)
-    if last == key:
-        return
-
-    # rate-limit per-warehouse
-    now = datetime.now(timezone.utc)
-    last_ts = _LAST_POSITION_SENT_AT.get(warehouse_id, datetime.fromtimestamp(0, tz=timezone.utc))
-    if (now - last_ts) < POSITION_RATE_LIMIT:
-        return
-    _LAST_POSITION_SENT_AT[warehouse_id] = now
-
-    _LAST_EMITTED_STATE[robot_id] = key
-    _emit({
-        "type": "robot.position",
-        "warehouse_id": warehouse_id,
-        "robot_id": robot_id,
-        "x": x,
-        "y": y,
-        "shelf": shelf_num_to_str(y),
-        "battery_level": round(float(battery_level or 0.0), 1),
-        "status": status or "idle",
-    })
+# =========================
+# Eligible-проверка цели
+# =========================
+async def _cell_still_eligible(session: AsyncSession, warehouse_id: str, cell: Tuple[int, int], cutoff: datetime) -> bool:
+    x, y = cell
+    shelf = shelf_num_to_str(y)
+    row = await session.execute(
+        select(Product.id).where(
+            Product.warehouse_id == warehouse_id,
+            Product.current_row == x,
+            func.upper(func.trim(Product.current_shelf)) == shelf,
+            (Product.last_scanned_at.is_(None)) | (Product.last_scanned_at < cutoff),
+        ).limit(1)
+    )
+    return row.first() is not None
 
 # =========================
 # Один тик робота
 # =========================
-
-async def _move_robot_once_impl(session: AsyncSession, robot_id: str, interval: float) -> None:
-    result = await session.execute(
-        select(Robot).where(Robot.id == robot_id).options(selectinload(Robot.warehouse))
+async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[int] = None) -> None:
+    rres = await session.execute(
+        select(Robot)
+        .options(load_only(
+            Robot.id, Robot.warehouse_id, Robot.status,
+            Robot.battery_level, Robot.current_row, Robot.current_shelf,
+        ))
+        .where(Robot.id == robot_id)
     )
-    robot = result.scalar_one_or_none()
+    robot = rres.scalar_one_or_none()
     if not robot:
         return
 
-    if (robot.status or "").lower() == "charging" and robot.id not in _CHARGE_ACCUM:
-        _CHARGE_ACCUM[robot.id] = 0.0
+    _ROBOT_WH[robot.id] = robot.warehouse_id
+    wid = robot.warehouse_id
+    tid = tick_id or _next_tick_id(wid)
+    cache = _get_tick_cache(wid, tid)
+    cutoff = datetime.now(timezone.utc) - RESCAN_COOLDOWN
+    cache["cutoff"] = cutoff
 
-    wh = robot.warehouse
-    max_x = max(0, (wh.row_x or 1) - 1)
-    max_y = max(1, min((wh.row_y or 1), 26))
-    drop_per_step = _drop_per_step_for_field(max_x, max_y)
-
-    # сканирование
-    with _LOCK_SCAN:
-        scanning_until = _SCANNING_UNTIL.get(robot.id)
+    # 1) Сканируем?
+    # 1) Сканируем?
     if (robot.status or "").lower() == "scanning":
-        _touch_robot(robot)
-        await _log_status_every_tick(session, robot)
-        if scanning_until and datetime.now(timezone.utc) >= scanning_until:
-            await _finish_scan(session, robot)
+        # если таймер отсутствует (после рестарта) — инициализируем
+        if robot.id not in _SCANNING_UNTIL:
+            now = datetime.now(timezone.utc)
+            _SCANNING_STARTED_AT[robot.id] = now
+            _SCANNING_UNTIL[robot.id] = now + SCAN_DURATION
+            _SCANNING_CELL.setdefault(robot.id, (int(robot.current_row or 0), int(robot.current_shelf or 0)))
+
+        if FAST_SCAN_LOOP:
+            # Вариант A: завершение скана делает только fast-цикл
+            return
+
+        # Fallback: если fast-цикл выключен, завершаем здесь, НО через идемпотентный safe-финиш
+        start_at = _SCANNING_STARTED_AT.get(robot.id)
+        now_dt = datetime.now(timezone.utc)
+        if start_at and (now_dt - start_at).total_seconds() * 1000.0 > SCAN_MAX_DURATION_MS:
+            await _safe_finish_scan(session, robot)
+            await session.flush()
+            _update_wh_snapshot_from_robot(robot)
+            await _maybe_emit_positions_snapshot_inmem(robot.warehouse_id)
+            return
+
+        until = _SCANNING_UNTIL.get(robot.id)
+        if until and now_dt >= until:
+            await _safe_finish_scan(session, robot)
+            await session.flush()
+            _update_wh_snapshot_from_robot(robot)
+            await _emit_position_if_needed(robot)
+            await _maybe_emit_positions_snapshot_inmem(robot.warehouse_id)
         return
 
-    # зарядка
+
+    # 2) Зарядка?
     if (robot.status or "").lower() == "charging":
-        robot.current_row, robot.current_shelf = DOCK_X, DOCK_Y
-        charge_step = 100.0 * interval / CHARGE_DURATION.total_seconds()
-        acc = _CHARGE_ACCUM.get(robot.id, 0.0) + charge_step
-        inc = int(acc // 1.0)
-        if inc > 0:
-            acc -= inc
-            current_lvl = float(robot.battery_level or 0.0)
-            robot.battery_level = min(100.0, current_lvl + inc)
-        _CHARGE_ACCUM[robot.id] = acc
-
-        _touch_robot(robot)
-        await _log_status_every_tick(session, robot)
-
-        if float(robot.battery_level or 0.0) >= 100.0:
+        inc = 100.0 * (TICK_INTERVAL / CHARGE_DURATION.total_seconds())
+        robot.battery_level = min(100.0, float(robot.battery_level or 0.0) + inc)
+        if float(robot.battery_level) >= 100.0:
             robot.status = "idle"
-            _touch_robot(robot)
-            await _log_status_every_tick(session, robot)
-            _CHARGE_ACCUM.pop(robot.id, None)
-
-        if EMIT_POSITION_PER_ROBOT:
-            _emit_position(
-                robot.warehouse_id,
-                robot.id,
-                int(robot.current_row or 0),
-                int(robot.current_shelf or 0),
-                robot.status,
-                float(robot.battery_level or 0.0),
-            )
+        await session.flush()
+        _update_wh_snapshot_from_robot(robot)
+        await _emit_position_if_needed(robot)
+        await _maybe_emit_positions_snapshot_inmem(wid)
         return
 
-    # цель
+    # 3) Поиск/поддержание цели
     cur = (int(robot.current_row or 0), int(robot.current_shelf or 0))
-    with _LOCK_TARGETS:
-        goal = _TARGETS.get(robot.id)
+    goal = _TARGETS.get(robot.id)
 
-    if goal is None or goal == cur:
+    if float(robot.battery_level or 0.0) <= LOW_BATTERY_THRESHOLD:
         if goal:
-            _free_claim(robot.warehouse_id, goal)
+            await _free_claim_global(wid, goal)
+            _TARGETS.pop(robot.id, None)
+        goal = (DOCK_X, DOCK_Y)
+    else:
+        if goal is not None:
+            still_ok = await _cell_still_eligible(session, wid, goal, cutoff)
+            if not still_ok:
+                await _free_claim_global(wid, goal)
+                _TARGETS.pop(robot.id, None)
+                goal = None
+        if goal is None:
+            if tid % IDLE_GOAL_LOOKUP_EVERY == 0:
+                if cache["cells"] is None:
+                    cache["cells"] = await _eligible_cells(session, wid, cutoff)
+                cells = cache["cells"] or []
+                if cells:
+                    claimed = _claimed_set(wid)  # локальный cache (актуален только при USE_REDIS_CLAIMS=0)
+                    local_sel: Set[Tuple[int, int]] = cache["local_selected"]
+                    best: Optional[Tuple[int, int]] = None
+                    best_d: Optional[int] = None
 
-        cells = await _product_cells_cached(session, robot.warehouse_id)
-        if cells:
-            # обычная логика — целимся в ближайшую клетку с товарами, избегая конфликтов
-            goal = _pick_goal(robot.warehouse_id, cur, cells, max_x, max_y)
-        else:
-            # «бродим» по соседним клеткам без бронирования, если нечего сканировать
-            goal = _random_wander_target(cur, max_x, max_y)
+                    # Предварительный выбор с учётом глобально занятых (локально) и уже локально выбранных на этот тик
+                    for c in cells:
+                        if (not USE_REDIS_CLAIMS and c in claimed) or c in local_sel:
+                            continue
+                        d = manhattan(cur, c)
+                        if best_d is None or d < best_d:
+                            best_d, best = d, c
 
-        with _LOCK_TARGETS:
-            _TARGETS[robot.id] = goal
+                    if best is not None:
+                        # Атомарная фиксация под локом склада для предотвращения гонок в рамках тика + попытка глобальной брони
+                        async with _wh_lock(wid):
+                            cache_now = _get_tick_cache(wid, tid)
+                            local_sel_now: Set[Tuple[int, int]] = cache_now["local_selected"]
+                            if best in local_sel_now:
+                                pass
+                            else:
+                                if await _claim_global(wid, best):
+                                    local_sel_now.add(best)
+                                    if not USE_REDIS_CLAIMS:
+                                        _claim_local(wid, best)
+                                    _TARGETS[robot.id] = best
+                                    goal = best
+                                else:
+                                    # кто-то успел забронировать глобально — попробуем позже
+                                    pass
 
-    # шаг
-    step = _next_step_towards(cur, goal)
-    nx = _bounded(step[0], 0, max_x)
-    ny = _bounded(step[1], 0, max_y)
+    # 4) Шаг движения
+    cur_x, cur_y = cur
+    if goal:
+        tx, ty = goal
+        nx, ny = cur_x, cur_y
+        if nx != tx:
+            nx += 1 if tx > nx else -1
+        elif ny != ty:
+            ny += 1 if ty > ny else -1
+    else:
+        cand = [(cur_x + 1, cur_y), (cur_x - 1, cur_y), (cur_x, cur_y + 1), (cur_x, cur_y - 1)]
+        valid = [(x, y) for (x, y) in cand if 0 <= x <= FIELD_X - 1 and 1 <= y <= FIELD_Y]
+        nx, ny = random.choice(valid) if valid else (cur_x, cur_y)
 
-    moved = (nx, ny) != cur
+    nx, ny = clamp_xy(nx, ny)
+
+    moved = (nx, ny) != (cur_x, cur_y)
     if moved:
-        _consume_battery(robot, drop_per_step)
+        robot.battery_level = max(0.0, float(robot.battery_level or 0.0) - BATTERY_DROP_PER_STEP)
 
+    # Села батарея — на док и зарядка
     if float(robot.battery_level or 0.0) <= 0.0:
         robot.current_row, robot.current_shelf = DOCK_X, DOCK_Y
         robot.status = "charging"
-        _CHARGE_ACCUM[robot.id] = 0.0
-        _touch_robot(robot)
-        await _log_status_every_tick(session, robot)
-        if EMIT_POSITION_PER_ROBOT:
-            _emit_position(
-                robot.warehouse_id,
-                robot.id,
-                int(robot.current_row or 0),
-                int(robot.current_shelf or 0),
-                robot.status,
-                float(robot.battery_level or 0.0),
-            )
-        _free_claim(robot.warehouse_id, goal)
-        with _LOCK_TARGETS:
-            _TARGETS.pop(robot.id, None)
+        if goal and goal != (DOCK_X, DOCK_Y):
+            await _free_claim_global(wid, goal)
+        _TARGETS.pop(robot.id, None)
+        await session.flush()
+        _update_wh_snapshot_from_robot(robot)
+        await _log_robot_status(session, robot, "charging") 
+        await _emit_position_if_needed(robot)
+        await _maybe_emit_positions_snapshot_inmem(wid)
         return
 
-    # обновляем состояние
-    robot.current_row, robot.current_shelf, robot.status = nx, ny, "idle"
-    _touch_robot(robot)
-    await _log_status_every_tick(session, robot)
+    robot.current_row, robot.current_shelf = nx, ny
+    robot.status = "idle"
+    await session.flush()
+    _update_wh_snapshot_from_robot(robot)
+    await _emit_position_if_needed(robot)
+    await _maybe_emit_positions_snapshot_inmem(wid)
 
-    if EMIT_POSITION_PER_ROBOT:
-        _emit_position(robot.warehouse_id, robot.id, nx, ny, robot.status, float(robot.battery_level or 0.0))
+    if (nx, ny) == (DOCK_X, DOCK_Y) and float(robot.battery_level) < 100.0:
+        robot.status = "charging"
+        if goal and goal != (DOCK_X, DOCK_Y):
+            await _free_claim_global(wid, goal)
+        _TARGETS.pop(robot.id, None)
+        await session.flush()
+        _update_wh_snapshot_from_robot(robot)
+        await _maybe_emit_positions_snapshot_inmem(wid)
+        return
 
-    # если пришли в цель — запускаем скан или сбрасываем цель
-    if (nx, ny) == goal:
-        cutoff = datetime.now(timezone.utc) - RESCAN_COOLDOWN
-        eligible = await _eligible_products_for_scan(session, robot.warehouse_id, nx, ny, cutoff)
-        if not eligible:
-            _free_claim(robot.warehouse_id, goal)
-            with _LOCK_TARGETS:
-                _TARGETS.pop(robot.id, None)
+    if goal and (nx, ny) == goal:
+        key = (nx, ny)
+        if key not in cache["by_cell"]:
+            cache["by_cell"][key] = await _eligible_products_in_cell(session, wid, nx, ny, cutoff)
+        eligible_now = cache["by_cell"][key]
+        if eligible_now:
+            await _start_scan(robot, nx, ny)
+            await _log_robot_status(session, robot, "scanning")   # <--- ДОБАВЬ
         else:
-            await _begin_scan(session, robot, nx, ny)
-            with _LOCK_TARGETS:
-                _TARGETS.pop(robot.id, None)
-
-# =====================================================================
-#              ПОСТОЯННЫЙ ВОРКЕР-ПОТОК НА СКЛАД
-# =====================================================================
-
-class WarehouseRunner:
-    """Постоянный поток на склад: свой loop, свой AsyncEngine/sessionmaker под этот loop."""
-
-    def __init__(self, warehouse_id: str):
-        self.warehouse_id = warehouse_id
-        self._thread = threading.Thread(target=self._thread_main, name=f"wh-runner-{warehouse_id[:6]}", daemon=True)
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._session_factory: Optional[async_sessionmaker[AsyncSession]] = None
-        self._engine: Optional[AsyncEngine] = None
-        # очередь корутин (а не callables с ensure_future) — далее runner их AWAIT-ит
-        self._queue: Optional[asyncio.Queue[Optional[Callable[[], Awaitable[None]]]]] = None
-        self._started = threading.Event()
-        self._stopped = False
-        self._sema: Optional[asyncio.Semaphore] = None
-
-    def start(self) -> None:
-        self._thread.start()
-        self._started.wait()
-
-    def stop(self) -> None:
-        if not self._loop:
-            return
-        self._stopped = True
-        # кладём sentry None и ждём остановку цикла
-        fut = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
-        fut.result(timeout=10)
-        self._thread.join(timeout=10)
-
-    async def _shutdown(self):
-        assert self._queue is not None
-        await self._queue.put(None)
-        # остановка цикла произойдёт в _thread_main после выхода runner()
-
-    def submit_tick(self, interval: float) -> None:
-        if not self._loop or not self._queue:
-            return
-
-        async def job():
-            await self._run_one_tick(interval)
-
-        # складываем КОРУТИНУ, а не запускаем её тут
-        asyncio.run_coroutine_threadsafe(self._queue.put(job), self._loop)
-
-    def _thread_main(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        self._loop = loop
-        self._queue = asyncio.Queue()
-
-        # ВАЖНО: создаём СВОЙ engine/sessionmaker для этого event loop
-        self._session_factory, self._engine = _session_factory_for_current_loop()
-
-        self._sema = asyncio.Semaphore(_MAX_CONCURRENT_ROBOTS_PER_WAREHOUSE)
-        self._started.set()
-
-        async def runner():
-            try:
-                while not self._stopped:
-                    maker = await self._queue.get()
-                    if maker is None:
-                        break
-                    try:
-                        # теперь мы ЖДЁМ выполнение задачи, а не плодим ensure_future
-                        await maker()
-                    except Exception as e:
-                        print(f"⚠️ WarehouseRunner({self.warehouse_id}) job error: {e}", flush=True)
-            except asyncio.CancelledError:
-                pass
-
-        try:
-            loop.create_task(runner())
-            loop.run_forever()
-        finally:
-            try:
-                pending = asyncio.all_tasks(loop)
-                for t in pending:
-                    t.cancel()
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                if self._engine is not None:
-                    loop.run_until_complete(self._engine.dispose())
-            finally:
-                loop.close()
-
-    async def _janitor(self) -> None:
-        """Периодический клининг: чистим глобальные словари и ограничиваем рост таблиц."""
-        now = datetime.now(timezone.utc)
-        # расписание
-        next_at = _WAREHOUSE_NEXT_JANITOR_AT.get(self.warehouse_id, datetime.fromtimestamp(0, tz=timezone.utc))
-        if now < next_at:
-            return
-        _WAREHOUSE_NEXT_JANITOR_AT[self.warehouse_id] = now + WAREHOUSE_JANITOR_EVERY
-
-        # 1) выясняем активные роботы этого склада
-        assert self._session_factory is not None
-        async with self._session_factory() as session:
-            result = await session.execute(select(Robot.id).where(Robot.warehouse_id == self.warehouse_id))
-            active_robot_ids = set(result.scalars().all())
-
-        # 2) чистим глобальные структуры от «мертвых» роботов
-        def _prune(mapping: Dict[str, object]):
-            dead = [rid for rid in list(mapping.keys()) if rid not in active_robot_ids]
-            for rid in dead:
-                try:
-                    mapping.pop(rid, None)
-                except Exception:
-                    pass
-
-        _prune(_TARGETS)
-        _prune(_SCANNING_UNTIL)      # type: ignore[arg-type]
-        _prune(_SCANNING_TARGET)     # type: ignore[arg-type]
-        _prune(_CHARGE_ACCUM)        # type: ignore[arg-type]
-        _prune(_LAST_EMITTED_STATE)  # type: ignore[arg-type]
-        _prune(_LAST_LOGGED_STATE)   # type: ignore[arg-type]
-        _prune(_LAST_HISTORY_AT)     # type: ignore[arg-type]
-
-        # 3) подчищаем историю инвентаризации по чуть-чуть
-        cutoff = now - INVENTORY_HISTORY_RETENTION
-        try:
-            async with self._session_factory() as s:
-                async with s.begin():
-                    # dialect-agnostic delete with LIMIT: выбираем id батчем и удаляем по IN
-                    ids_stmt = (
-                        select(InventoryHistory.id)
-                        .where(
-                            InventoryHistory.warehouse_id == self.warehouse_id,
-                            InventoryHistory.created_at < cutoff
-                        )
-                        .limit(INVENTORY_HISTORY_CLEAN_CHUNK)
-                    )
-                    ids_res = await s.execute(ids_stmt)
-                    ids = [row[0] for row in ids_res.fetchall()]
-                    if ids:
-                        await s.execute(delete(InventoryHistory).where(InventoryHistory.id.in_(ids)))
-        except Exception as e:
-            print(f"⚠️ Janitor({self.warehouse_id}) cleanup error: {e}", flush=True)
-
-    async def _run_one_tick(self, interval: float) -> None:
-        assert self._session_factory is not None
-        async with self._session_factory() as session:
-            result = await session.execute(select(Robot.id).where(Robot.warehouse_id == self.warehouse_id))
-            robot_ids = list(result.scalars().all())
-        if not robot_ids:
-            # даже если роботов нет — запускаем периодический клининг
-            await self._janitor()
-            return
-
-        sema = self._sema or asyncio.Semaphore(_MAX_CONCURRENT_ROBOTS_PER_WAREHOUSE)
-
-        async def run_one_robot(rid: str):
-            async with sema:
-                async with self._session_factory() as s:
-                    async with s.begin():
-                        await _move_robot_once_impl(s, rid, interval)
-
-        await asyncio.gather(*[run_one_robot(rid) for rid in robot_ids])
-
-        if EMIT_POSITION_BATCH:
-            async with self._session_factory() as s2:
-                result = await s2.execute(select(Robot).where(Robot.warehouse_id == self.warehouse_id))
-                robots = list(result.scalars().all())
-            batch = []
-            for r in robots:
-                y = int(r.current_shelf or 0)
-                batch.append({
-                    "robot_id": r.id,
-                    "x": int(r.current_row or 0),
-                    "y": y,
-                    "shelf": shelf_num_to_str(y),
-                    "battery_level": int(round(float(r.battery_level or 0.0))),
-                    "status": (r.status or "idle"),
-                })
-            _emit({
-                "type": "robot.position",
-                "warehouse_id": self.warehouse_id,
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "robots": batch,
-            })
-
-        # периодический клининг после выполнения тика
-        await self._janitor()
+            await _free_claim_global(wid, goal)
+        _TARGETS.pop(robot.id, None)
+        await session.flush()
+        _update_wh_snapshot_from_robot(robot)
+        await _maybe_emit_positions_snapshot_inmem(wid)
 
 # =========================
-# Вотчер
+# Планировщик: окно с приоритетом сканов
 # =========================
+def _select_robot_batch(warehouse_id: str, robot_ids: List[str]) -> List[str]:
+    if not robot_ids:
+        return []
+    # приоритет: ИЛИ есть таймер, ИЛИ статус в снапшоте == scanning
+    scanning = [rid for rid in robot_ids if (rid in _SCANNING_UNTIL) or _is_scanning_in_snapshot(warehouse_id, rid)]
+    scanning_set = set(scanning)
+    normal = [rid for rid in robot_ids if rid not in scanning_set]
 
-async def run_robot_watcher(
-    interval: float = 2,
-    max_robot_workers: int = 20,
-    max_warehouse_workers: int = 4,
-    require_singleton: bool = True,
-    singleton_lock_path: Optional[str] = DEFAULT_WATCHER_LOCK_PATH,
-) -> None:
-    """
-    - Для каждого активного склада поднимается постоянный воркер-поток со своим loop.
-    - В каждом воркере СОБСТВЕННЫЙ AsyncEngine/Session, привязанные к его loop
-      (исправляет 'Future attached to a different loop').
-    - Защита от роста памяти: ограниченная очередь событий + периодический janitor.
-    - События маршрутизируются в отдельные janus-очереди (COMMON/ROBOT), чтобы телеметрия не блокировала прочие WS.
-    """
-    global _WATCHER_RUNNING
+    win = max(ROBOTS_PER_TICK - len(scanning), 0)
+    if win <= 0:
+        return scanning
 
-    if require_singleton and _WATCHER_RUNNING:
-        print("ℹ️ Robot watcher already running in this process — skipping second start.", flush=True)
-        return
+    n = len(normal)
+    if n == 0:
+        return scanning
 
-    if require_singleton:
-        if not _try_acquire_process_lock(singleton_lock_path):
-            print(f"ℹ️ Robot watcher: another instance holds lock {singleton_lock_path!r}. Skipping start.", flush=True)
-            return
+    off = _WH_ROBOT_OFFSET.get(warehouse_id, 0) % n
+    if off + win <= n:
+        batch = normal[off:off + win]
+    else:
+        batch = normal[off:] + normal[:(off + win) % n]
+    _WH_ROBOT_OFFSET[warehouse_id] = (off + win) % n
+    return scanning + batch
 
-    # гарантируем ограниченные очереди (janus уже ограничены в ws_manager),
-    # здесь лишь информативный лог размеров:
+# =========================
+# FAST SCANNER LOOP
+# =========================
+async def _fast_scan_loop(warehouse_id: str) -> None:
+    """Каждые FAST_SCAN_INTERVAL_MS завершает готовые сканы; инициализирует таймеры для роботов со статусом 'scanning'."""
+    interval = max(5, FAST_SCAN_INTERVAL_MS) / 1000.0
     try:
-        print(f"ℹ️ Queues: common_max={getattr(EVENTS_COMMON.sync_q, 'maxsize', '?')}, "
-              f"robot_max={getattr(EVENTS_ROBOT.sync_q, 'maxsize', '?')}", flush=True)
-    except Exception:
-        pass
-
-    _WATCHER_RUNNING = True
-
-    try:
-        print(f"🚀 Robot watcher started (persistent warehouse workers). pid={os.getpid()}", flush=True)
-        runners: Dict[str, WarehouseRunner] = {}
-
         while True:
-            session_factory_main = _session_factory_main()
-            async with session_factory_main() as session:
-                result = await session.execute(
-                    select(Warehouse).join(Robot, Robot.warehouse_id == Warehouse.id).distinct()
-                )
-                warehouses = list(result.scalars().all())
+            now = datetime.now(timezone.utc)
+            # Собираем кандидатов: все rid со статусом 'scanning' в снапшоте этого склада
+            scan_rids = [item["robot_id"] for item in _wh_snapshot(warehouse_id).values()
+                         if (item.get("status") or "").lower() == "scanning"]
 
-            active_ids = {wh.id for wh in warehouses}
+            processed = 0
+            for rid in scan_rids:
+                if _SCANNING_FINISHING.get(rid):
+                    continue
+                # Инициализируем таймер, если отсутствует (после рестарта/прогрева)
+                if rid not in _SCANNING_UNTIL:
+                    _SCANNING_STARTED_AT[rid] = now
+                    _SCANNING_UNTIL[rid] = now  # сразу готов к завершению
+                    snap = _wh_snapshot(warehouse_id).get(rid) or {}
+                    _SCANNING_CELL.setdefault(rid, (int(snap.get("x") or 0), int(snap.get("y") or 0)))
 
-            # старт новых
-            for wh in warehouses:
-                if wh.id not in runners:
-                    runner = WarehouseRunner(wh.id)
-                    runner.start()
-                    runners[wh.id] = runner
+                until = _SCANNING_UNTIL.get(rid)
+                start_at = _SCANNING_STARTED_AT.get(rid)
+                # watchdog
+                if start_at and (now - start_at).total_seconds() * 1000.0 > SCAN_MAX_DURATION_MS:
+                    try:
+                        async with AppSession() as s:
+                            async with s.begin():
+                                rres = await s.execute(
+                                    select(Robot).options(load_only(
+                                        Robot.id, Robot.warehouse_id, Robot.status,
+                                        Robot.battery_level, Robot.current_row, Robot.current_shelf,
+                                    )).where(Robot.id == rid)
+                                )
+                                robot = rres.scalar_one_or_none()
+                                if robot:
+                                    # Не держим лок! Идемпотентность внутри _safe_finish_scan
+                                    await _safe_finish_scan(s, robot)
+                                    await s.flush()
+                                    _update_wh_snapshot_from_robot(robot)
+                                    await _maybe_emit_positions_snapshot_inmem(robot.warehouse_id)
 
-            # остановка исчезнувших
-            for wid in list(runners.keys()):
-                if wid not in active_ids:
-                    runners[wid].stop()
-                    del runners[wid]
-                    # также подчистим кэши и claimed по складу
-                    with _LOCK_TARGETS:
-                        _CLAIMED_TARGETS.pop(wid, None)
-                    _PRODUCT_CELLS_CACHE.pop(wid, None)
-                    _LAST_SCAN_CACHE.pop(wid, None)
-                    _WAREHOUSE_NEXT_JANITOR_AT.pop(wid, None)
+                    except Exception as e:
+                        print(f"⚠️ fast-scan watchdog error (wh={warehouse_id}, rid={rid}): {e}", flush=True)
+                    processed += 1
+                    continue
 
-            # тик всем активным
-            for _, runner in runners.items():
-                runner.submit_tick(interval)
+                if until and now >= until:
+                    try:
+                        async with AppSession() as s:
+                            async with s.begin():
+                                rres = await s.execute(
+                                    select(Robot).options(load_only(
+                                        Robot.id, Robot.warehouse_id, Robot.status,
+                                        Robot.battery_level, Robot.current_row, Robot.current_shelf,
+                                    )).where(Robot.id == rid)
+                                )
+                                robot = rres.scalar_one_or_none()
+                                if robot:
+    # Не держим лок! Идемпотентность внутри _safe_finish_scan
+                                    await _safe_finish_scan(s, robot)
+                                    await s.flush()
+                                    _update_wh_snapshot_from_robot(robot)
+                                    await _maybe_emit_positions_snapshot_inmem(robot.warehouse_id)
+
+
+
+                    except Exception as e:
+                        print(f"⚠️ fast-scan error (wh={warehouse_id}, rid={rid}): {e}", flush=True)
+                    processed += 1
 
             await asyncio.sleep(interval)
     except asyncio.CancelledError:
-        print("\n🛑 Robot watcher stopping...", flush=True)
-    finally:
-        for wid, runner in list(runners.items()):
+        pass
+
+def _ensure_fast_scan_task_started(warehouse_id: str) -> None:
+    if not FAST_SCAN_LOOP:
+        return
+    if warehouse_id in _WH_FASTSCAN_TASK and not _WH_FASTSCAN_TASK[warehouse_id].done():
+        return
+    _WH_FASTSCAN_TASK[warehouse_id] = asyncio.create_task(_fast_scan_loop(warehouse_id))
+
+async def _stop_fast_scan_task(warehouse_id: str) -> None:
+    t = _WH_FASTSCAN_TASK.pop(warehouse_id, None)
+    if t:
+        t.cancel()
+        try:
+            await t
+        except Exception:
+            pass
+
+# =========================
+# POSITIONS BROADCASTER LOOP (строгий период 1–2 секунды)
+# =========================
+async def _positions_broadcast_loop(warehouse_id: str) -> None:
+    """Отправляет robot.positions/robot.positions.diff или keepalive.
+       При USE_REDIS_COORD публикацию полного среза делает только координаторный шард."""
+    interval = max(100, POSITIONS_BROADCAST_INTERVAL_MS) / 1000.0
+    try:
+        while True:
+            await asyncio.sleep(interval)
+
+            if USE_REDIS_COORD:
+                # Дополнительно убеждаемся, что это координатор
+                if _SHARD_IDX != COORDINATOR_SHARD_INDEX:
+                    continue
+                r = await _get_redis()
+                hkey = _robots_hash_key(warehouse_id)
+                ver_key = _robots_ver_key(warehouse_id)
+                lastsent_key = _robots_last_sent_map_key(warehouse_id)
+
+                data = await r.hgetall(hkey)  # {rid: json}
+                if not data:
+                    continue
+                robots = []
+                for rid, s in data.items():
+                    try:
+                        robots.append(json.loads(s))
+                    except Exception:
+                        pass
+
+                # атомарная версия
+                cur_ver = int(await r.incr(ver_key))
+                payload_ts = datetime.now(timezone.utc).isoformat()
+
+                if POSITIONS_DIFFS:
+                    last_json = await r.get(lastsent_key)
+                    last_map = {}
+                    if last_json:
+                        try:
+                            last_map = json.loads(last_json)
+                        except Exception:
+                            last_map = {}
+                    cur_map = {item["robot_id"]: item for item in robots}
+                    changed = [v for k, v in cur_map.items() if last_map.get(k) != v]
+                    removed = [k for k in last_map.keys() if k not in cur_map]
+
+                    if changed or removed:
+                        await _emit({
+                            "type": "robot.positions.diff",
+                            "warehouse_id": warehouse_id,
+                            "version": cur_ver,
+                            "base_version": cur_ver - 1,
+                            "changed": changed,
+                            "removed": removed,
+                            "ts": payload_ts,
+                        })
+                        await r.set(lastsent_key, json.dumps(cur_map))
+                else:
+                    await _emit({
+                        "type": "robot.positions",
+                        "warehouse_id": warehouse_id,
+                        "robots": robots,
+                        "version": cur_ver,
+                        "ts": payload_ts,
+                    })
+                    await r.set(lastsent_key, json.dumps({x["robot_id"]: x for x in robots}))
+
+                continue  # координационная ветка обработала — идём в следующий цикл
+
+            # ======== локальный режим (без Redis-координации) ==========
+            loop = asyncio.get_running_loop()
+            now_mono = loop.time()
+
+            async with _wh_lock(warehouse_id):
+                cur_ver = _WH_SNAPSHOT_VER.get(warehouse_id, 0)
+                last_sent_ver = _WH_LAST_SENT_VER.get(warehouse_id, -1)
+                snap_dict = _wh_snapshot(warehouse_id)
+                have_data = bool(snap_dict)
+                last_any = _LAST_ANY_SENT_AT.get(warehouse_id, 0.0)
+                need_keepalive = (now_mono - last_any) * 1000.0 >= POSITIONS_MAX_INTERVAL_MS
+                changed = cur_ver != last_sent_ver
+
+                if not have_data:
+                    continue
+
+                payload_ts = datetime.now(timezone.utc).isoformat()
+
+                if changed:
+                    if POSITIONS_DIFFS:
+                        changed_items, removed = _calc_diff_payload(warehouse_id, snap_dict)
+                        if changed_items or removed:
+                            await _emit({
+                                "type": "robot.positions.diff",
+                                "warehouse_id": warehouse_id,
+                                "version": cur_ver,
+                                "base_version": last_sent_ver,
+                                "changed": changed_items,
+                                "removed": removed,
+                                "ts": payload_ts,
+                            })
+                            _remember_last_sent_map(warehouse_id, snap_dict)
+                            _WH_LAST_SENT_VER[warehouse_id] = cur_ver
+                    else:
+                        await _emit({
+                            "type": "robot.positions",
+                            "warehouse_id": warehouse_id,
+                            "robots": list(snap_dict.values()),
+                            "version": cur_ver,
+                            "ts": payload_ts,
+                        })
+                        _remember_last_sent_map(warehouse_id, snap_dict)
+                        _WH_LAST_SENT_VER[warehouse_id] = cur_ver
+
+                    _LAST_POS_BROADCAST_AT[warehouse_id] = now_mono
+                    _LAST_ANY_SENT_AT[warehouse_id] = now_mono
+                    continue
+
+                if need_keepalive:
+                    if POSITIONS_DIFFS and not KEEPALIVE_FULL:
+                        await _emit({
+                            "type": "robot.positions.keepalive",
+                            "warehouse_id": warehouse_id,
+                            "version": cur_ver,
+                            "robot_count": len(snap_dict),
+                            "ts": payload_ts,
+                        })
+                    else:
+                        await _emit({
+                            "type": "robot.positions",
+                            "warehouse_id": warehouse_id,
+                            "robots": list(snap_dict.values()),
+                            "version": cur_ver,
+                            "ts": payload_ts,
+                        })
+                        _remember_last_sent_map(warehouse_id, snap_dict)
+                        _WH_LAST_SENT_VER[warehouse_id] = cur_ver
+
+                    _LAST_POS_BROADCAST_AT[warehouse_id] = now_mono
+                    _LAST_ANY_SENT_AT[warehouse_id] = now_mono
+    except asyncio.CancelledError:
+        pass
+
+def _ensure_positions_broadcaster_started(warehouse_id: str) -> None:
+    if warehouse_id in _WH_POS_TASK and not _WH_POS_TASK[warehouse_id].done():
+        return
+    _WH_POS_TASK[warehouse_id] = asyncio.create_task(_positions_broadcast_loop(warehouse_id))
+
+async def _stop_positions_broadcaster(warehouse_id: str) -> None:
+    t = _WH_POS_TASK.pop(warehouse_id, None)
+    if t:
+        t.cancel()
+        try:
+            await t
+        except Exception:
+            pass
+
+# =========================
+# Корректное закрытие AsyncEngine (устраняет segfault при выходе)
+# =========================
+async def _dispose_async_engine_if_any():
+    try:
+        # если в проекте объявлен engine явно
+        from app.db.session import async_engine as _engine  # подстрой, если модуль другой
+    except Exception:
+        _engine = getattr(AppSession, "bind", None)
+    try:
+        if isinstance(_engine, AsyncEngine):
+            await _engine.dispose()
+    except Exception:
+        pass
+
+# =========================
+# Цикл склада (single-process helper)
+# =========================
+async def _run_warehouse(warehouse_id: str) -> None:
+    sema = asyncio.Semaphore(ROBOTS_CONCURRENCY)
+    tick = 0
+    _set_shard(0, 1)
+    _ensure_fast_scan_task_started(warehouse_id)
+    # В одиночном режиме публикацию делаем здесь (если USE_REDIS_COORD=1, этот процесс — координатор)
+    _ensure_positions_broadcaster_started(warehouse_id)
+    try:
+        while True:
             try:
-                runner.stop()
+                async with AppSession() as session:
+                    r = await session.execute(select(Robot.id).where(Robot.warehouse_id == warehouse_id))
+                    all_robot_ids = list(r.scalars().all())
+                if not all_robot_ids:
+                    await asyncio.sleep(TICK_INTERVAL)
+                    continue
+
+                # Прогрев/первая отсылка
+                if all_robot_ids and not _WH_SNAPSHOT.get(warehouse_id):
+                    async with AppSession() as s:
+                        await _warmup_or_sync_snapshot(s, warehouse_id, all_robot_ids)
+                        await _emit_positions_snapshot_force(warehouse_id)
+
+                # Синхронизация состава
+                async with AppSession() as s:
+                    await _warmup_or_sync_snapshot(s, warehouse_id, all_robot_ids)
+
+                # Выбор окна
+                robot_ids = _select_robot_batch(warehouse_id, all_robot_ids)
+
+                tid = _next_tick_id(warehouse_id)
+
+                async def run_one(rid: str):
+                    async with sema:
+                        async with AppSession() as s:
+                            async with s.begin():
+                                await _robot_tick(s, rid, tick_id=tid)
+
+                await asyncio.gather(*[run_one(rid) for rid in robot_ids])
+
+                tick += 1
+                if tick % 20 == 0:
+                    print(f"[{datetime.now().isoformat()}] wh={warehouse_id} tick={tick} robots_tick={len(robot_ids)}/{len(all_robot_ids)}", flush=True)
+
+                await asyncio.sleep(TICK_INTERVAL)
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                print(f"⚠️ Stop runner {wid} error: {e}", flush=True)
-        _release_process_lock()
-        _WATCHER_RUNNING = False
-        print("✅ Robot watcher stopped.", flush=True)
+                print(f"⚠️ warehouse loop error (wh={warehouse_id}): {e}", flush=True)
+                await asyncio.sleep(0.5)
+    finally:
+        await _stop_fast_scan_task(warehouse_id)
+        await _stop_positions_broadcaster(warehouse_id)
+
+# =========================
+# Вотчер (однопроцессный)
+# =========================
+async def run_robot_watcher() -> None:
+    print(f"🚀 watcher started pid={os.getpid()} interval={TICK_INTERVAL}s", flush=True)
+    tasks: Dict[str, asyncio.Task] = {}
+    try:
+        while True:
+            try:
+                async with AppSession() as session:
+                    rows = await session.execute(
+                        select(Warehouse.id).join(Robot, Robot.warehouse_id == Warehouse.id).distinct()
+                    )
+                    wh_ids = set(rows.scalars().all())
+
+                # старт новых
+                for wid in wh_ids:
+                    if wid not in tasks or tasks[wid].done():
+                        tasks[wid] = asyncio.create_task(_run_warehouse(wid))
+
+                # стоп исчезнувших
+                for wid in list(tasks.keys()):
+                    if wid not in wh_ids:
+                        tasks[wid].cancel()
+                        try:
+                            await tasks[wid]
+                        except Exception:
+                            pass
+                        tasks.pop(wid, None)
+                        _CLAIMED.pop(wid, None)
+                        _WH_SNAPSHOT.pop(wid, None)
+                        _WH_SNAPSHOT_VER.pop(wid, None)
+                        _WH_LAST_SENT_VER.pop(wid, None)
+                        _WH_LAST_SENT_MAP.pop(wid, None)
+                        _LAST_POS_BROADCAST_AT.pop(wid, None)
+                        _LAST_ANY_SENT_AT.pop(wid, None)
+                        _ELIGIBLE_CACHE.pop(wid, None)
+                        _WH_TICK_COUNTER.pop(wid, None)
+                        _WH_ROBOT_OFFSET.pop(wid, None)
+                        _WH_LOCKS.pop(wid, None)
+                        await _stop_fast_scan_task(wid)
+                        await _stop_positions_broadcaster(wid)
+
+                await asyncio.sleep(TICK_INTERVAL)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print(f"⚠️ watcher loop error: {e}", flush=True)
+                await asyncio.sleep(0.5)
+    except asyncio.CancelledError:
+        print("🛑 watcher cancelled", flush=True)
+    finally:
+        for wid, t in list(tasks.items()):
+            t.cancel()
+            try:
+                await t
+            except Exception:
+                pass
+            # на всякий случай остановим сервисные циклы
+            await _stop_fast_scan_task(wid)
+            await _stop_positions_broadcaster(wid)
+        await close_bus_for_current_loop()
+        await _dispose_async_engine_if_any()
+        await _close_redis()
+        print("✅ watcher stopped", flush=True)
+
+# =========================
+# Multiprocessing watcher
+# =========================
+# На Linux чаще стабильнее 'forkserver' (меньше shared-состояния, чем при 'spawn')
+MP_START_METHOD = os.getenv("MP_START_METHOD", "forkserver")
+MAX_WAREHOUSE_PROCS = int(os.getenv("MAX_WAREHOUSE_PROCS", "0"))  # 0 = без лимита
+ROBOTS_PER_PROC = int(os.getenv("ROBOTS_PER_PROC", "3"))  # целевая доля роботов на один процесс
+
+@dataclass
+class _WhProc:
+    proc: mp.Process
+    stop_evt: mp.Event
+
+async def _list_active_warehouses() -> Set[str]:
+    async with AppSession() as session:
+        rows = await session.execute(
+            select(Warehouse.id).join(Robot, Robot.warehouse_id == Warehouse.id).distinct()
+        )
+        return set(rows.scalars().all())
+
+async def _graceful_wait(condition_fn, timeout: float, poll: float = 0.1) -> bool:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        if condition_fn():
+            return True
+        await asyncio.sleep(poll)
+    return condition_fn()
+
+def _warehouse_process_entry(warehouse_id: str, shard_idx: int, shard_count: int, stop_evt: mp.Event) -> None:
+    try:
+        asyncio.run(_run_warehouse_until_event(warehouse_id, shard_idx, shard_count, stop_evt))
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"⚠️ worker({warehouse_id}) crashed: {e}", flush=True)
+    finally:
+        try:
+            asyncio.run(close_bus_for_current_loop())
+        except Exception:
+            pass
+        try:
+            asyncio.run(_dispose_async_engine_if_any())
+        except Exception:
+            pass
+        try:
+            asyncio.run(_close_redis())
+        except Exception:
+            pass
+        print(f"🧹 worker({warehouse_id}) stopped", flush=True)
+
+async def _run_warehouse_until_event(warehouse_id: str, shard_idx: int, shard_count: int, stop_evt: mp.Event) -> None:
+    sema = asyncio.Semaphore(ROBOTS_CONCURRENCY)
+    tick = 0
+    _set_shard(shard_idx, shard_count)
+    print(f"🏭 worker({warehouse_id}) shard={shard_idx+1}/{max(1, shard_count)} started pid={os.getpid()} interval={TICK_INTERVAL}s", flush=True)
+    _ensure_fast_scan_task_started(warehouse_id)
+
+    # Broadcaster запускаем только у координатора при USE_REDIS_COORD; иначе — везде
+    if USE_REDIS_COORD:
+        if shard_idx == COORDINATOR_SHARD_INDEX:
+            _ensure_positions_broadcaster_started(warehouse_id)
+    else:
+        _ensure_positions_broadcaster_started(warehouse_id)
+
+    def _stopping() -> bool:
+        return stop_evt.is_set()
+
+    try:
+        while not _stopping():
+            try:
+                async with AppSession() as session:
+                    r = await session.execute(select(Robot.id).where(Robot.warehouse_id == warehouse_id))
+                    all_robot_ids = sorted(list(r.scalars().all()))
+                # шардируем роботов по индексу
+                if shard_count > 1:
+                    all_robot_ids = [rid for i, rid in enumerate(all_robot_ids) if (i % shard_count) == shard_idx]
+                if not all_robot_ids:
+                    await asyncio.sleep(TICK_INTERVAL)
+                    continue
+
+                # Прогрев/первая отсылка (в локальном режиме)
+                if all_robot_ids and not _WH_SNAPSHOT.get(warehouse_id):
+                    async with AppSession() as s:
+                        await _warmup_or_sync_snapshot(s, warehouse_id, all_robot_ids)
+                        await _emit_positions_snapshot_force(warehouse_id)
+
+                # Синхронизация состава
+                async with AppSession() as s:
+                    await _warmup_or_sync_snapshot(s, warehouse_id, all_robot_ids)
+
+                robot_ids = _select_robot_batch(warehouse_id, all_robot_ids)
+                tid = _next_tick_id(warehouse_id)
+
+                async def run_one(rid: str):
+                    async with sema:
+                        async with AppSession() as s:
+                            async with s.begin():
+                                await _robot_tick(s, rid, tick_id=tid)
+
+                await asyncio.gather(*[run_one(rid) for rid in robot_ids])
+
+                tick += 1
+                if tick % 20 == 0:
+                    print(f"[{datetime.now().isoformat()}] wh={warehouse_id} shard={shard_idx+1}/{shard_count} tick={tick} robots_tick={len(robot_ids)}/{len(all_robot_ids)}", flush=True)
+
+                await asyncio.sleep(TICK_INTERVAL)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print(f"⚠️ warehouse loop error (wh={warehouse_id} shard={shard_idx+1}/{shard_count}): {e}", flush=True)
+                await asyncio.sleep(0.5)
+    finally:
+        await _stop_fast_scan_task(warehouse_id)
+        if not USE_REDIS_COORD or (USE_REDIS_COORD and shard_idx == COORDINATOR_SHARD_INDEX):
+            await _stop_positions_broadcaster(warehouse_id)
+        _CLAIMED.pop(warehouse_id, None)
+        _WH_SNAPSHOT.pop(warehouse_id, None)
+        _WH_SNAPSHOT_VER.pop(warehouse_id, None)
+        _WH_LAST_SENT_VER.pop(warehouse_id, None)
+        _WH_LAST_SENT_MAP.pop(warehouse_id, None)
+        _LAST_POS_BROADCAST_AT.pop(warehouse_id, None)
+        _LAST_ANY_SENT_AT.pop(warehouse_id, None)
+        _ELIGIBLE_CACHE.pop(warehouse_id, None)
+        _WH_TICK_COUNTER.pop(warehouse_id, None)
+        _WH_ROBOT_OFFSET.pop(warehouse_id, None)
+        _WH_LOCKS.pop(warehouse_id, None)
+        await close_bus_for_current_loop()
+        await _dispose_async_engine_if_any()
+        await _close_redis()
+
+async def run_robot_watcher_mproc() -> None:
+    mp.set_start_method(MP_START_METHOD, force=True)
+    print(f"🚀 MP watcher started pid={os.getpid()} method={MP_START_METHOD} interval={TICK_INTERVAL}s", flush=True)
+
+    # Ключ карты процессов теперь wid:shard_idx/shard_count
+    procs: Dict[str, _WhProc] = {}
+    stop = asyncio.Event()
+
+    def _on_signal(sig, _frame=None):
+        print(f"🛑 MP watcher got signal {sig}", flush=True)
+        stop.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, _on_signal)
+        except Exception:
+            pass
+
+    try:
+        while not stop.is_set():
+            try:
+                wh_ids = await _list_active_warehouses()
+
+                # Узнаём актуальное число роботов на складах
+                wh_robot_counts: Dict[str, int] = {}
+                async with AppSession() as session:
+                    rows = await session.execute(
+                        select(Warehouse.id, func.count(Robot.id))
+                        .join(Robot, Robot.warehouse_id == Warehouse.id)
+                        .group_by(Warehouse.id)
+                    )
+                    for wid, cnt in rows.all():
+                        wh_robot_counts[wid] = int(cnt)
+
+                # Поднимаем недостающие воркеры-шарды для каждого склада
+                for wid in sorted(wh_ids):
+                    total = wh_robot_counts.get(wid, 0)
+                    shard_count = max(1, (total + ROBOTS_PER_PROC - 1) // ROBOTS_PER_PROC) if total > 0 else 0
+                    alive_global = len([p for p in procs.values() if p.proc.is_alive()])
+
+                    for shard_idx in range(shard_count):
+                        key = f"{wid}:{shard_idx}/{shard_count}"
+                        if key in procs and procs[key].proc.is_alive():
+                            continue
+                        if MAX_WAREHOUSE_PROCS > 0 and alive_global >= MAX_WAREHOUSE_PROCS:
+                            break
+                        stop_evt = mp.Event()
+                        p = mp.Process(
+                            target=_warehouse_process_entry,
+                            args=(wid, shard_idx, shard_count, stop_evt),
+                            name=f"wh-{wid[:6]}-s{shard_idx+1}of{shard_count}",
+                            daemon=False,
+                        )
+                        p.start()
+                        procs[key] = _WhProc(proc=p, stop_evt=stop_evt)
+                        alive_global += 1
+                        print(f"▶️ started worker for wh={wid} shard={shard_idx+1}/{shard_count} pid={p.pid}", flush=True)
+
+                # Останавливаем воркеры для складов, которые исчезли или шарды стали лишними
+                active_keys = set()
+                for wid in sorted(wh_ids):
+                    total = wh_robot_counts.get(wid, 0)
+                    shard_count = max(1, (total + ROBOTS_PER_PROC - 1) // ROBOTS_PER_PROC) if total > 0 else 0
+                    for shard_idx in range(shard_count):
+                        active_keys.add(f"{wid}:{shard_idx}/{shard_count}")
+
+                for key in list(procs.keys()):
+                    wid = key.split(":", 1)[0]
+                    if (wid not in wh_ids) or (key not in active_keys):
+                        wp = procs.pop(key, None)
+                        if not wp:
+                            continue
+                        print(f"⏹ stopping worker {key}", flush=True)
+                        try:
+                            wp.stop_evt.set()
+                        except Exception:
+                            pass
+                        wp.proc.join(timeout=10)
+                        if wp.proc.is_alive():
+                            print(f"⛔ force terminate {key}", flush=True)
+                            wp.proc.terminate()
+                            wp.proc.join(timeout=5)
+
+                # Чистим мёртвые процессы
+                for key, wp in list(procs.items()):
+                    if not wp.proc.is_alive():
+                        procs.pop(key, None)
+
+                await asyncio.sleep(TICK_INTERVAL)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print(f"⚠️ MP watcher loop error: {e}", flush=True)
+                await asyncio.sleep(0.5)
+    finally:
+        print("🧹 MP watcher shutting down...", flush=True)
+        for key, wp in list(procs.items()):
+            try:
+                wp.stop_evt.set()
+            except Exception:
+                pass
+        await _graceful_wait(lambda: all(not wp.proc.is_alive() for wp in procs.values()), timeout=12.0, poll=0.2)
+        for key, wp in list(procs.items()):
+            if wp.proc.is_alive():
+                print(f"⛔ force terminate {key}", flush=True)
+                wp.proc.terminate()
+        for key, wp in list(procs.items()):
+            try:
+                wp.proc.join(timeout=3)
+            except Exception:
+                pass
+        await close_bus_for_current_loop()
+        await _dispose_async_engine_if_any()
+        await _close_redis()
+        print("✅ MP watcher stopped", flush=True)
