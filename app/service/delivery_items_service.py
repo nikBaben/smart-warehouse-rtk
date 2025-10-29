@@ -8,7 +8,7 @@ class DeliveryItemsService:
     def __init__(self, repo: DeliveryItemsRepository):
         self.repo = repo
         
-    async def schedule(self, data: DeliveryItemsCreate):
+    async def create_delivery_items(self, data: DeliveryItemsCreate):
         sd_id = data.id or str(uuid4())
         sd = await self.repo.create(
             id=sd_id,
