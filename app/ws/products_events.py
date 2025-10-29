@@ -20,6 +20,18 @@ except Exception:
 
 def _pack_product(p: Product) -> dict:
     created_at = getattr(p, "created_at", None)
+    shelf_value = getattr(p, "current_shelf", None)
+
+    # 🔤 Преобразуем букву в номер по алфавиту
+    if isinstance(shelf_value, str) and len(shelf_value) == 1 and shelf_value.isalpha():
+        current_shelf = ord(shelf_value.upper()) - ord("A") + 1
+    else:
+        # если там уже число или None — просто обрабатываем
+        try:
+            current_shelf = int(shelf_value)
+        except (TypeError, ValueError):
+            current_shelf = 0
+
     return {
         "id": p.id,
         "name": p.name,
@@ -27,12 +39,13 @@ def _pack_product(p: Product) -> dict:
         "warehouse_id": p.warehouse_id,
         "current_zone": getattr(p, "current_zone", None),
         "current_row": getattr(p, "current_row", 0),
-        "current_shelf": getattr(p, "current_shelf", "A"),
+        "current_shelf": current_shelf,  # ✅ теперь всегда число
         "stock": getattr(p, "stock", None),
         "min_stock": getattr(p, "min_stock", None),
         "optimal_stock": getattr(p, "optimal_stock", None),
         "created_at": created_at.isoformat() if created_at else None,
     }
+
 
 
 # ---------- публикации ----------
