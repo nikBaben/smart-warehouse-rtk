@@ -7,24 +7,29 @@ interface ButtonGridProps {
 }
 
 export function ButtonGrid({ selected, onChange }: ButtonGridProps) {
-  const buttons = ["сегодня", "вчера", "неделя", "месяц"];
+  const buttons = [
+    { key: "today", label: "Сегодня" },
+    { key: "yesterday", label: "Вчера" },
+    { key: "week", label: "Неделя" },
+    { key: "month", label: "Месяц" },
+  ];
 
-  const toggleButton = (label: string) => {
+  const toggleButton = (key: string) => {
     onChange(prev =>
-      prev.includes(label)
-        ? prev.filter(l => l !== label)
-        : [...prev, label]
+      prev.includes(key)
+        ? prev.filter(k => k !== key)
+        : [...prev, key]
     );
   };
 
   return (
     <div className="grid grid-cols-2 gap-x-[6px] gap-y-[3px]">
-      {buttons.map(label => (
+      {buttons.map(({ key, label }) => (
         <Button
-          key={label}
-          onClick={() => toggleButton(label)}
+          key={key}
+          onClick={() => toggleButton(key)}
           className={`h-[24px] w-[96px] text-[12px] font-medium cursor-pointer
-                      ${selected.includes(label) ? "border-[1px] border-[#7700FF]" : "border-none"} 
+                      ${selected.includes(key) ? "border-[1px] border-[#7700FF]" : "border-none"} 
                       bg-[#F2F3F4] text-black shadow-none`}
         >
           {label}
