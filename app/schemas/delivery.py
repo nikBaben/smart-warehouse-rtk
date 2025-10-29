@@ -11,6 +11,7 @@ QuantityType = conint(ge=0)
 class DeliveryBase(BaseModel):
     name: Optional[str] = Field(None, description="Название поставки")
     scheduled_at: datetime = Field(..., description="Запланированное время доставки")
+    delivered_at: datetime = Field(None, description="Фактическое время доставки")
     quantity: QuantityType = Field(..., description="Запланированное количество доставляемого товара")
     status: DeliveryStatus = Field(DeliveryStatus.scheduled, description="Статус доставки. Может быть:\n" +
                                   "scheduled - запланированно\n" +

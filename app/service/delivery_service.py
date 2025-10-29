@@ -15,6 +15,7 @@ class DeliveryService:
             id=sd_id,
             warehouse_id=data.warehouse_id,
             scheduled_at=data.scheduled_at,
+            delivered_at=data.delivered_at,
             quantity=int(data.quantity),
             status=data.status if isinstance(data.status, DeliveryStatus) else DeliveryStatus(data.status),
             supplier=data.supplier,

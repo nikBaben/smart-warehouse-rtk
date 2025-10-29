@@ -12,6 +12,7 @@ class DeliveryRepository:
         
     async def create(self, *, id: str, warehouse_id: Optional[str], 
                      scheduled_at, quantity: int,
+                     delivered_at,
                      status: Optional[DeliveryStatus] = DeliveryStatus.scheduled,
                      supplier: Optional[str] = None,
                      notes: Optional[str] = None) -> Delivery:
@@ -19,6 +20,7 @@ class DeliveryRepository:
             id=id,
             warehouse_id=warehouse_id,
             scheduled_at=scheduled_at,
+            delivered_at=delivered_at,
             quantity=quantity,
             status=status,
             supplier=supplier,
