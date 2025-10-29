@@ -8,15 +8,6 @@ from app.models.delivery_items import DeliveryItems
 from app.models.shipment import ShipmentItems
 
 
-"""
-Event-driven data access helpers for ML.
-
-Principle: do not derive consumption from inventory history timeseries.
-Use `delivery_items` (incoming) and `shipment_items` (outgoing) as authoritative event sources.
-`inventory_history` is used only to obtain a snapshot at prediction time (current stock).
-"""
-
-
 async def fetch_inventory_history(product_id: str, wharehouse_id: Optional[str]=None,
                                   start: Optional[datetime]=None, end: Optional[datetime] = None):
     async with async_session() as session:
@@ -144,6 +135,48 @@ async def build_event_timeseries(product_id: str,
     if "ds" not in agg.columns:
         agg.insert(0, "ds", agg.index)
     return agg[["ds", "incoming", "outgoing", "net_outgoing"]]
+
+
+async def fetch_outgoing_timeseries(product_id: str, wharehouse_id: Optional[str] = None,
+                                    start: Optional[datetime] = None, end: Optional[datetime] = None,
+                                    freq: str = "D") -> pd.DataFrame:
+    """Return historical outgoing (shipments only) for ML training.
+
+    Returns DataFrame with columns: ds, y (outgoing quantity aggregated by freq).
+    This is used to train demand forecasting models.
+    """
+    async with async_session() as session:
+        stmt_out = select(ShipmentItems).where(ShipmentItems.product_id == product_id)
+        if wharehouse_id:
+            stmt_out = stmt_out.where(ShipmentItems.warehouse_id == wharehouse_id)
+        if start:
+            stmt_out = stmt_out.where(ShipmentItems.created_at >= start)
+        if end:
+            stmt_out = stmt_out.where(ShipmentItems.created_at <= end)
+        rows_out = (await session.execute(stmt_out)).scalars().all()
+
+    records = []
+    for r in rows_out:
+        # use shipped_at if available, otherwise created_at
+        ts = None
+        if hasattr(r, "shipment") and r.shipment and getattr(r.shipment, "shipped_at", None):
+            ts = r.shipment.shipped_at
+        else:
+            ts = r.created_at
+        if ts is None:
+            continue
+        records.append({"ts": pd.to_datetime(ts), "outgoing": float(r.fact_quantity or 0)})
+
+    if not records:
+        return pd.DataFrame(columns=["ds", "y"]).astype({"ds": "datetime64[ns]", "y": "float"})
+
+    df = pd.DataFrame.from_records(records)
+    df = df.set_index("ts").sort_index()
+    agg = df.resample(freq).sum().fillna(0)
+    agg = agg.reset_index().rename(columns={"ts": "ds", "outgoing": "y"})
+    if "ds" not in agg.columns:
+        agg.insert(0, "ds", agg.index)
+    return agg[["ds", "y"]]
 
 
 async def predict_depletion_from_snapshot(product_id: str,
@@ -425,4 +458,76 @@ async def predict_depletion_from_snapshot(product_id: str, wharehouse_id: Option
     end = as_of + timedelta(days=horizon_days)
     events = await build_event_timeseries(product_id, wharehouse_id, start, end, freq=freq, include_planned=True, include_actuals=False)
     return estimate_depletion_date(initial, events, freq=freq, horizon_days=horizon_days)
+
+
+async def fetch_planned_incoming(product_id: str, wharehouse_id: Optional[str],
+                                  start: datetime, end: datetime, freq: str = "D") -> pd.DataFrame:
+    """Fetch planned deliveries (scheduled_at + ordered_quantity) for prediction.
+    
+    Returns DataFrame with columns: ds, incoming
+    """
+    async with async_session() as session:
+        stmt = select(DeliveryItems).where(DeliveryItems.product_id == product_id)
+        if wharehouse_id:
+            stmt = stmt.where(DeliveryItems.warehouse_id == wharehouse_id)
+        rows = (await session.execute(stmt)).scalars().all()
+    
+    records = []
+    for item in rows:
+        if getattr(item, "delivery", None) is not None:
+            sched = getattr(item.delivery, "scheduled_at", None)
+            if sched and start <= sched <= end:
+                records.append({"ts": pd.to_datetime(sched), "incoming": float(item.ordered_quantity or 0)})
+    
+    if not records:
+        return pd.DataFrame(columns=["ds", "incoming"]).astype({"ds": "datetime64[ns]", "incoming": "float"})
+    
+    df = pd.DataFrame.from_records(records)
+    df = df.set_index("ts").sort_index()
+    agg = df.resample(freq).sum().fillna(0)
+    agg = agg.reset_index().rename(columns={"ts": "ds"})
+    if "ds" not in agg.columns:
+        agg.insert(0, "ds", agg.index)
+    return agg[["ds", "incoming"]]
+
+
+def predict_depletion_with_model(initial_stock: float,
+                                  planned_incoming_df: pd.DataFrame,
+                                  predicted_outgoing_df: pd.DataFrame,
+                                  freq: str = "D") -> Optional[datetime]:
+    """Calculate depletion date using: stock + planned_incoming - predicted_outgoing.
+    
+    Args:
+        initial_stock: current stock level
+        planned_incoming_df: DataFrame with columns ['ds', 'incoming']
+        predicted_outgoing_df: DataFrame with columns ['ds', 'yhat'] (Prophet forecast)
+    
+    Returns:
+        datetime when stock <= 0, or None if no depletion
+    """
+    if initial_stock is None or initial_stock <= 0:
+        return None
+    
+    # merge incoming and outgoing on date
+    incoming = planned_incoming_df.set_index(pd.to_datetime(planned_incoming_df["ds"]))["incoming"] if not planned_incoming_df.empty else pd.Series(dtype=float)
+    outgoing = predicted_outgoing_df.set_index(pd.to_datetime(predicted_outgoing_df["ds"]))["yhat"] if not predicted_outgoing_df.empty else pd.Series(dtype=float)
+    
+    # create full date range
+    if incoming.empty and outgoing.empty:
+        return None
+    
+    all_dates = pd.concat([incoming, outgoing]).index.unique().sort_values()
+    incoming = incoming.reindex(all_dates, fill_value=0)
+    outgoing = outgoing.reindex(all_dates, fill_value=0).clip(lower=0)  # negative outgoing doesn't make sense
+    
+    # simulate stock over time
+    stock = float(initial_stock)
+    for date in all_dates:
+        stock += float(incoming.get(date, 0))
+        stock -= float(outgoing.get(date, 0))
+        if stock <= 0:
+            return date.to_pydatetime()
+    
+    return None
+
     

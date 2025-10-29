@@ -5,19 +5,18 @@ from typing import Optional
 
 
 from prophet import Prophet
-from app.ml.data_access import fetch_movement_timeseries
+from app.ml.data_access import fetch_outgoing_timeseries
 from app.ml.model_store import save_model
 
 
 async def train_for_product(product_id: str, model_path: str, freq: str = "D", warehouse_id: Optional[str] = None):
-    df = await fetch_movement_timeseries(product_id, warehouse_id, None, None, freq=freq)
+    """Train Prophet model on historical outgoing shipments to predict future demand."""
+    df = await fetch_outgoing_timeseries(product_id, warehouse_id, None, None, freq=freq)
     if df.empty or len(df) < 10:
         raise RuntimeError("Not enough data to train model. Need at least 10 dates")
 
-    if "net_outgoing" not in df.columns:
-        raise RuntimeError("Movement timeseries does not contain 'net_outgoing' column")
-
-    train_df = df[["ds", "net_outgoing"]].rename(columns={"net_outgoing": "y"}).copy()
+    # fetch_outgoing_timeseries already returns ['ds', 'y']
+    train_df = df.copy()
     train_df["y"] = train_df["y"].astype(float)
 
     m = Prophet(yearly_seasonality=True, weekly_seasonality=True)
