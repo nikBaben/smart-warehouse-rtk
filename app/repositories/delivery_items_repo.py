@@ -11,7 +11,8 @@ class DeliveryItemsRepository:
         
     async def create(self, *, id: str, delivery_id: Optional[str],
                      product_id: Optional[str], warehouse_id: Optional[str],
-                     ordered_quantity: int, fact_quantity: int) -> DeliveryItems:
+                     ordered_quantity: int, fact_quantity: int) -> DeliveryIte
+    ms:
         sd = DeliveryItems(
             id=id,
             delivery_id=delivery_id,
