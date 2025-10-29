@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import {
   Table,
   TableBody,
@@ -19,6 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { Skeleton } from "../ui/skeleton";
+
 import ChevronDown from "@atomaro/icons/24/navigation/ChevronDown";
 import ArrowRight from "@atomaro/icons/24/navigation/ArrowRight";
 
@@ -31,71 +33,57 @@ type Column<T> = {
   sortKey?: keyof T;
 };
 
-interface DataTableProps<T> {
+interface DataTableHistoryProps<T extends { id: string }> {
   data: T[];
   columns: Column<T>[];
-  rowsPerPage?: number;
+  totalPages: number;
+  page: number;
+  rowsPerPage: number;
+  onPageChange: (page: number) => void;
+  onRowsPerPageChange: (rows: number) => void;
+  isLoading?: boolean;
+  selectedRows: string[];
+  setSelectedRows: React.Dispatch<React.SetStateAction<string[]>>;
+  
+  onSortChange?: (key: string, direction: "asc" | "desc") => void;
+  sortBy?: string | null;
+  sortOrder?: "asc" | "desc" | null;
 }
 
-export function DataTableHistory<T extends object>({
-  data,
-  columns,
-  rowsPerPage: initialRowsPerPage = 20,
-}: DataTableProps<T>) {
-  const [selectedRows, setSelectedRows] = useState<number[]>([]);
-  const [page, setPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(initialRowsPerPage);
+export function DataTableHistory<T extends { id: string }>(props: DataTableHistoryProps<T>) {
+  const {
+    data,
+    columns,
+    totalPages,
+    page,
+    rowsPerPage,
+    onPageChange,
+    onRowsPerPageChange,
+    isLoading = false,
+    selectedRows,
+    setSelectedRows,
+    onSortChange,
+    sortBy = null,
+    sortOrder = "asc",
+  } = props;
 
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof T | null;
-    direction: "asc" | "desc";
-  }>({ key: null, direction: "asc" });
-
-  const totalPages = Math.ceil(data.length / rowsPerPage);
-
-  const sortedData = React.useMemo(() => {
-    if (!sortConfig.key) return data;
-
-    return [...data].sort((a, b) => {
-      const aVal = a[sortConfig.key as keyof T];
-      const bVal = b[sortConfig.key as keyof T];
-
-      const aStr = typeof aVal === "number" ? aVal : String(aVal ?? "");
-      const bStr = typeof bVal === "number" ? bVal : String(bVal ?? "");
-
-      if (aStr < bStr) return sortConfig.direction === "asc" ? -1 : 1;
-      if (aStr > bStr) return sortConfig.direction === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [data, sortConfig]);
-
-  const paginatedData = sortedData.slice(
-    (page - 1) * rowsPerPage,
-    page * rowsPerPage
-  );
-
-  const toggleRow = (rowIndex: number) => {
+  const toggleRow = (rowId: string) => {
     setSelectedRows((prev) =>
-      prev.includes(rowIndex)
-        ? prev.filter((i) => i !== rowIndex)
-        : [...prev, rowIndex]
+      prev.includes(rowId) ? prev.filter((i) => i !== rowId) : [...prev, rowId]
     );
   };
 
   const handleSort = (col: Column<T>) => {
     const key =
-      typeof col.accessor === "string"
-        ? col.accessor
-        : col.sortKey ?? null;
+      typeof col.accessor === "string" ? col.accessor : col.sortKey ?? null;
+    if (!key || !onSortChange) return;
 
-    if (!key) return;
+    const currentKey = sortBy;
+    const currentDir = sortOrder ?? "asc";
+    const newDirection =
+      currentKey === key && currentDir === "asc" ? "desc" : "asc";
 
-    setSortConfig((prev) => {
-      if (prev.key === key) {
-        return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
-      }
-      return { key, direction: "asc" };
-    });
+    onSortChange(String(key), newDirection);
   };
 
   return (
@@ -107,16 +95,16 @@ export function DataTableHistory<T extends object>({
               {columns.map((col, index) => {
                 const key =
                   typeof col.accessor === "string" ? col.accessor : col.sortKey;
-
-                const isActive = sortConfig.key === key;
+                const isActive = sortBy === key;
 
                 return (
                   <TableHead
                     key={index}
-                    onClick={() => handleSort(col)}
+                    onClick={() => col.sortable && handleSort(col)}
                     className={cn(
-                      "text-center relative select-none cursor-pointer",
-                      index === 0 && "text-left",
+                      "text-center relative select-none",
+                      col.sortable && "cursor-pointer",
+                      index === 0 && "text-left"
                     )}
                   >
                     <div className="flex items-center justify-center gap-1">
@@ -126,8 +114,7 @@ export function DataTableHistory<T extends object>({
                           className={cn(
                             "w-[10px] h-[10px] transition-transform",
                             isActive &&
-                              sortConfig.direction === "desc" &&
-                              "rotate-180",
+                              (sortOrder === "desc" ? "rotate-180" : ""),
                             !isActive && "opacity-30"
                           )}
                           fill="black"
@@ -141,70 +128,131 @@ export function DataTableHistory<T extends object>({
           </TableHeader>
 
           <TableBody className="[&_tr]:h-[30px]">
-            {paginatedData.map((item, i) => {
-              const rowIndex = (page - 1) * rowsPerPage + i;
-              const isSelected = selectedRows.includes(rowIndex);
+            {isLoading ? (
+              <>
+                {[...Array(rowsPerPage)].map((_, rowIndex) => (
+                  <TableRow key={rowIndex} className="h-[30px] bg-[#F2F3F4]">
+                    {columns.map((col, colIndex) => {
+                      let widthClass = "w-[60px]";
+                      let justifyClass = "justify-center";
+                      if (colIndex === 0) {
+                        justifyClass = "justify-start";
+                        widthClass = "w-[97px]";
+                      }
+                      if (colIndex === columns.length - 1) {
+                        justifyClass = "justify-end";
+                        widthClass = "w-[79px]";
+                      }
+                      if (colIndex === Math.floor(columns.length / 2))
+                        widthClass = "w-[90px]";
 
-              return (
-                <TableRow
-                  key={rowIndex}
-                  className={cn(
-                    "transition-colors duration-150",
-                    "hover:bg-[#E8E9EA] bg-[#F2F3F4]",
-                    isSelected && "bg-[#F7F0FF] hover:bg-[#efe3fc]"
-                  )}
-                  onClick={(e) => {
-                    if (!(e.target as HTMLElement).closest("input[type='checkbox']")) {
-                      toggleRow(rowIndex);
-                    }
-                  }}
-                >
-                  {columns.map((col, index) => {
-                    const value =
-                      typeof col.accessor === "function"
-                        ? col.accessor(item)
-                        : (item[col.accessor as keyof T] as React.ReactNode);
+                      let roundedClass = "rounded-none";
+                      if (colIndex === 0) roundedClass = "rounded-l-[5px]";
+                      if (colIndex === columns.length - 1)
+                        roundedClass = "rounded-r-[5px]";
 
-                    const isFirst = index === 0;
-                    const isLast = index === columns.length - 1;
-
-                    return (
-                      <TableCell
-                        key={index}
-                        className={cn(
-                          "text-center py-[5px]",
-                          isLast && "rounded-r-[5px] text-right",
-                          isFirst && "rounded-l-[5px] text-left"
-                        )}
-                      >
-                        {isFirst ? (
-                          <div className="flex items-center gap-2">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleRow(rowIndex)}
-                              className="h-[10px] w-[10px] border-[#5A606D] border-[0.5px] rounded-[2px]"
+                      return (
+                        <TableCell
+                          key={colIndex}
+                          className={cn("py-[5px]", roundedClass)}
+                        >
+                          <div className={`flex items-center gap-2 ${justifyClass}`}>
+                            {colIndex === 0 && (
+                              <Skeleton className="h-[10px] w-[10px] rounded-[2px]" />
+                            )}
+                            <Skeleton
+                              className={cn(
+                                "h-[12px] rounded-l-[5px] bg-[#CDCED2]",
+                                widthClass
+                              )}
                             />
-                            {value}
                           </div>
-                        ) : (
-                          value
-                        )}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              );
-            })}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))}
+              </>
+            ) : data.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="text-center py-10 text-gray-500"
+                >
+                  Не удалось найти информацию
+                </TableCell>
+              </TableRow>
+            ) : (
+              data.map((item) => {
+                const rowId = item.id;
+                const isSelected = selectedRows.includes(rowId);
+
+                return (
+                  <TableRow
+                    key={rowId}
+                    className={cn(
+                      "transition-colors duration-150",
+                      "hover:bg-[#E8E9EA] bg-[#F2F3F4]",
+                      isSelected && "bg-[#F7F0FF] hover:bg-[#efe3fc]"
+                    )}
+                    onClick={(e) => {
+                      if (
+                        !(e.target as HTMLElement).closest(
+                          "input[type='checkbox']"
+                        )
+                      ) {
+                        toggleRow(rowId);
+                      }
+                    }}
+                  >
+                    {columns.map((col, index) => {
+                      const value =
+                        typeof col.accessor === "function"
+                          ? col.accessor(item)
+                          : (item[col.accessor as keyof T] as React.ReactNode);
+
+                      const isFirst = index === 0;
+                      const isLast = index === columns.length - 1;
+
+                      return (
+                        <TableCell
+                          key={index}
+                          className={cn(
+                            "text-center py-[5px]",
+                            isLast && "rounded-r-[5px] text-right",
+                            isFirst && "rounded-l-[5px] text-left"
+                          )}
+                        >
+                          {isFirst ? (
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleRow(rowId)}
+                                className="h-[10px] w-[10px] border-[#5A606D] border-[0.5px] rounded-[2px]"
+                              />
+                              {value}
+                            </div>
+                          ) : (
+                            value
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })
+            )}
           </TableBody>
         </Table>
       </div>
 
+      {/* --- Пагинация --- */}
       <div className="flex justify-center items-center text-[12px] h-[43px] gap-[15px]">
         <div className="flex items-center gap-[4px]">
           {[...Array(totalPages)].map((_, i) => (
             <Button
               key={i}
-              onClick={() => setPage(i + 1)}
+              onClick={() => onPageChange(i + 1)}
               className={cn(
                 "w-[18px] h-[18px] !p-0 min-w-[18px] min-h-[18px] rounded-[5px] text-[12px] font-light shadow-none",
                 page === i + 1
@@ -216,7 +264,7 @@ export function DataTableHistory<T extends object>({
             </Button>
           ))}
           <Button
-            onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+            onClick={() => onPageChange(Math.min(page + 1, totalPages))}
             disabled={page === totalPages}
             className={cn(
               "bg-[#F2F3F4] w-[18px] h-[18px] rounded-[5px] shadow-none",
@@ -229,11 +277,7 @@ export function DataTableHistory<T extends object>({
 
         <Select
           value={String(rowsPerPage)}
-          onValueChange={(value) => {
-            const newValue = Number(value);
-            setRowsPerPage(newValue);
-            setPage(1);
-          }}
+          onValueChange={(value) => onRowsPerPageChange(Number(value))}
         >
           <SelectTrigger className="relative flex items-center justify-between w-auto !h-[18px] border-none rounded-[5px] bg-[#F2F3F4] text-[12px] pl-1 pr-1 focus:ring-0 shadow-none font-light">
             <SelectValue className="truncate" />
