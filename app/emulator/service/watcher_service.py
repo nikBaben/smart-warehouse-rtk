@@ -7,22 +7,22 @@ from sqlalchemy import select, func
 from app.db.session import async_session as AppSession
 from app.models.warehouse import Warehouse
 from app.models.robot import Robot
-from scheduler_service import select_robot_batch
-from config import (
+from app.emulator.service.scheduler_service import select_robot_batch
+from app.emulator.config import (
     TICK_INTERVAL, EMIT_AUTOSEND_INIT, ROBOTS_CONCURRENCY,
 )
-from state_service import (
+from app.emulator.service.state_service import (
     wh_snapshot, WH_SNAPSHOT, WH_SNAPSHOT_VER, WH_LAST_SENT_VER, WH_LAST_SENT_MAP,
     LAST_POS_BROADCAST_AT, LAST_ANY_SENT_AT, ELIGIBLE_CACHE, WH_TICK_COUNTER,
     WH_ROBOT_OFFSET, wh_lock
 )
-from fast_scan_service import fast_scan_loop
-from broadcaster_service import ensure_positions_broadcaster_started, stop_positions_broadcaster
-from warmup_service import warmup_or_sync_snapshot
-from positions_service import emit_positions_snapshot_force
-from events_service import emit, emit_position_if_needed
-from scanning_service import emit_product_scan_on_connect
-from tick_service import robot_tick
+from app.emulator.service.fast_scan_service import fast_scan_loop
+from app.emulator.service.broadcaster_service import ensure_positions_broadcaster_started, stop_positions_broadcaster
+from app.emulator.service.warmup_service import warmup_or_sync_snapshot
+from app.emulator.service.positions_service import emit_positions_snapshot_force
+from app.emulator.service.events_service import emit, emit_position_if_needed
+from app.emulator.service.scanning_service import emit_product_scan_on_connect
+from app.emulator.service.tick_service import robot_tick
 
 _FAST_TASKS = {}
 

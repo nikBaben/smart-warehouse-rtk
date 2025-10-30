@@ -3,17 +3,17 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 import json
-from config import (
+from app.emulator.config import (
     USE_REDIS_COORD, POSITIONS_MIN_INTERVAL_MS, POSITIONS_KEEPALIVE_MS,
     KEEPALIVE_FULL, POSITIONS_DIFFS, POSITIONS_BROADCAST_INTERVAL_MS,
     POSITIONS_MAX_INTERVAL_MS, COORDINATOR_SHARD_INDEX
 )
-from state_service import (
+from app.emulator.service.state_service import (
     wh_lock, wh_snapshot, WH_SNAPSHOT_VER, WH_LAST_SENT_VER, LAST_POS_BROADCAST_AT,
     LAST_ANY_SENT_AT, last_sent_map, ROBOT_WH
 )
-from redis_coord_service import robots_hash_key, robots_ver_key, robots_last_sent_map_key, get_redis
-from events_service import emit
+from app.emulator.service.redis_coord_service import robots_hash_key, robots_ver_key, robots_last_sent_map_key, get_redis
+from app.emulator.service.events_service import emit
 
 def _calc_diff_payload(wid: str, snap: Dict[str, dict]):
     last = last_sent_map(wid)

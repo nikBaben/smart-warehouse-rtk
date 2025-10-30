@@ -5,10 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import load_only
 from app.db.session import async_session as AppSession
 from app.models.robot import Robot
-from state_service import wh_snapshot, SCANNING_UNTIL, SCANNING_STARTED_AT, SCANNING_CELL, SCANNING_FINISHING, update_wh_snapshot_from_robot
-from config import FAST_SCAN_INTERVAL_MS, FAST_SCAN_LOOP, SCAN_MAX_DURATION_MS
-from scanning_service import safe_finish_scan
-from positions_service import maybe_emit_positions_snapshot_inmem
+from app.emulator.service.state_service import wh_snapshot, SCANNING_UNTIL, SCANNING_STARTED_AT, SCANNING_CELL, SCANNING_FINISHING, update_wh_snapshot_from_robot
+from app.emulator.config import FAST_SCAN_INTERVAL_MS, FAST_SCAN_LOOP, SCAN_MAX_DURATION_MS
+from app.emulator.service.scanning_service import safe_finish_scan
+from app.emulator.service.positions_service import maybe_emit_positions_snapshot_inmem
 
 async def fast_scan_loop(warehouse_id: str) -> None:
     if not FAST_SCAN_LOOP:

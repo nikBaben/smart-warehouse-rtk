@@ -6,23 +6,23 @@ from typing import Optional, Tuple, Set, List
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
 from app.models.robot import Robot
-from coords_service import clamp_xy
-from scanning_service import _log_robot_status
+from app.emulator.service.coords_service import clamp_xy
+from app.emulator.service.scanning_service import _log_robot_status
 
-from config import (
+from app.emulator.config import (
     DOCK_X, DOCK_Y, TICK_INTERVAL, CHARGE_DURATION, LOW_BATTERY_THRESHOLD,
     BATTERY_DROP_PER_STEP, RESCAN_COOLDOWN,SCAN_MAX_DURATION_MS, IDLE_GOAL_LOOKUP_EVERY
 )
-from coords_service import clamp_xy, manhattan, shelf_num_to_str
-from state_service import (
+from app.emulator.service.coords_service import clamp_xy, manhattan, shelf_num_to_str
+from app.emulator.service.state_service import (
     update_wh_snapshot_from_robot, TARGETS, wh_lock, get_tick_cache,
     next_tick_id, ROBOT_WH, SCANNING_UNTIL, SCANNING_STARTED_AT
 )
-from eligibility_service import eligible_cells, eligible_products_in_cell, cell_still_eligible
-from redis_coord_service import claim_global, free_claim_global
-from .events_service import emit_position_if_needed
-from positions_service import maybe_emit_positions_snapshot_inmem
-from scanning_service import start_scan, safe_finish_scan
+from app.emulator.service.eligibility_service import eligible_cells, eligible_products_in_cell, cell_still_eligible
+from app.emulator.service.redis_coord_service import claim_global, free_claim_global
+from app.emulator.service.events_service import emit_position_if_needed
+from app.emulator.service.positions_service import maybe_emit_positions_snapshot_inmem
+from app.emulator.service.scanning_service import start_scan, safe_finish_scan
 
 def robot_xy(robot: Robot) -> tuple[int, int]:
     return int(robot.current_shelf or 0), int(robot.current_row or 0)

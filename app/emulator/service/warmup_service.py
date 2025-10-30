@@ -4,8 +4,8 @@ from typing import List, Dict
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
 from app.models.robot import Robot
-from coords_service import shelf_num_to_str
-from state_service import wh_snapshot, WH_SNAPSHOT_VER, ROBOT_WH
+from app.emulator.service.coords_service import shelf_num_to_str
+from app.emulator.service.state_service import wh_snapshot, WH_SNAPSHOT_VER, ROBOT_WH
 
 async def warmup_or_sync_snapshot(session, warehouse_id: str, robot_ids: List[str] | None = None) -> None:
     if robot_ids is None:

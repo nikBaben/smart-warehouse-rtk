@@ -2,8 +2,8 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Set, Tuple, Optional
-from coords_service import shelf_num_to_str
-from config import POSITION_RATE_LIMIT_PER_ROBOT
+from app.emulator.service.coords_service import shelf_num_to_str
+from app.emulator.config import POSITION_RATE_LIMIT_PER_ROBOT
 
 # ===== Память процесса
 TARGETS: Dict[str, Tuple[int, int]] = {}

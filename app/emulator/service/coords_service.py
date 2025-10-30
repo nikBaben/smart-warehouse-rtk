@@ -1,5 +1,5 @@
 from typing import Tuple
-from config import FIELD_X, FIELD_Y
+from app.emulator.config import FIELD_X, FIELD_Y
 
 ALPH = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 

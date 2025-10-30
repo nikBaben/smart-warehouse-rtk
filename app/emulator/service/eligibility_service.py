@@ -1,8 +1,8 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import List, Tuple
-from coords_service import shelf_num_to_str, shelf_str_to_num
-from config import FIELD_X, FIELD_Y
+from app.emulator.service.coords_service import shelf_num_to_str, shelf_str_to_num
+from app.emulator.config import FIELD_X, FIELD_Y
 from app.models.product import Product
 from sqlalchemy import select, func
 from sqlalchemy.orm import load_only

@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 from app.events.bus import get_bus_for_current_loop, close_bus_for_current_loop, ROBOT_CH, COMMON_CH
-from config import SEND_ROBOT_POSITION
-from state_service import should_emit_position
-from coords_service import shelf_num_to_str
+from app.emulator.config import SEND_ROBOT_POSITION
+from app.emulator.service.state_service import should_emit_position
+from app.emulator.service.coords_service import shelf_num_to_str
 
 async def emit(evt: dict) -> None:
     t = evt.get("type", "")

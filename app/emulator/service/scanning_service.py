@@ -14,16 +14,16 @@ from app.models.robot_history import RobotHistory
 from app.models.robot import Robot
 from app.models.product import Product
 
-from config import (
+from app.emulator.config import (
     LAST_SCANS_LIMIT, RESCAN_COOLDOWN, SCAN_DURATION, SCAN_MAX_DURATION_MS
 )
-from coords_service import shelf_num_to_str
-from state_service import (
+from app.emulator.service.coords_service import shelf_num_to_str
+from app.emulator.service.state_service import (
     SCANNING_CELL, SCANNING_UNTIL, SCANNING_STARTED_AT, update_wh_snapshot_from_robot,
     TARGETS, scan_lock, SCANNING_FINISHING
 )
-from redis_coord_service import get_redis, last_scans_key, claim_global, free_claim_global
-from events_service import emit
+from app.emulator.service.redis_coord_service import get_redis, last_scans_key, claim_global, free_claim_global
+from app.emulator.service.events_service import emit
 
 # ===== Кеш последних сканов (в памяти процесса)
 _LAST_SCANS_CACHE: Dict[str, deque] = {}

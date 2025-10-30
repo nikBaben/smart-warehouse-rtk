@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 from typing import Optional, Tuple, List, Dict
-from config import (
+from app.emulator.config import (
     USE_REDIS_COORD, USE_REDIS_CLAIMS, REDIS_URL, CLAIM_TTL_MS, LAST_SCANS_LIMIT
 )
 try:

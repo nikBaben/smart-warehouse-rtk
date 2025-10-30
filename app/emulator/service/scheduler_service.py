@@ -1,6 +1,6 @@
 from typing import List
-from state_service import SCANNING_UNTIL, WH_ROBOT_OFFSET, wh_snapshot
-from config import ROBOTS_PER_TICK
+from app.emulator.service.state_service import SCANNING_UNTIL, WH_ROBOT_OFFSET, wh_snapshot
+from app.emulator.config import ROBOTS_PER_TICK
 
 def is_scanning_in_snapshot(warehouse_id: str, rid: str) -> bool:
     item = wh_snapshot(warehouse_id).get(rid)

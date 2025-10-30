@@ -9,12 +9,12 @@ from app.db.session import async_session as AppSession
 from app.models.warehouse import Warehouse
 from app.models.robot import Robot
 
-from config import (
+from app.emulator.config import (
     MP_START_METHOD, TICK_INTERVAL, MAX_WAREHOUSE_PROCS, ROBOTS_PER_PROC,
     COORDINATOR_SHARD_INDEX
 )
-from watcher_service import _run_warehouse  
-from redis_coord_service import close_redis
+from app.emulator.service.watcher_service import _run_warehouse  
+from app.emulator.service.redis_coord_service import close_redis
 
 @dataclass
 class _WhProc:

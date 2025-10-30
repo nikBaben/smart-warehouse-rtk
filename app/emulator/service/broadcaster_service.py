@@ -1,5 +1,5 @@
 import asyncio
-from positions_service import positions_broadcast_loop
+from app.emulator.service.positions_service import positions_broadcast_loop
 
 _TASKS = {}
 
