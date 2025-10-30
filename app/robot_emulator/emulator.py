@@ -3,6 +3,7 @@ from __future__ import annotations
 import os as _os
 _os.environ.setdefault("SQLALCHEMY_DISABLE_CEXT", "1")
 _os.environ.setdefault("GREENLET_USE_GC", "0")  # опционально; снижает шанс падений при GC
+EMIT_AUTOSEND_INIT = _os.environ.setdefault("EMIT_AUTOSEND_INIT", "1") == "0"
 
 """
 Эмулятор робота с БД и шиной событий + multiprocessing.
@@ -1456,7 +1457,8 @@ async def _run_warehouse(warehouse_id: str) -> None:
                     async with AppSession() as s:
                         await _warmup_or_sync_snapshot(s, warehouse_id, all_robot_ids)
                         await _emit_positions_snapshot_force(warehouse_id)
-                        await _emit_product_scans_init(warehouse_id)
+                        if EMIT_AUTOSEND_INIT:
+                            await _emit_product_scans_init(warehouse_id)
 
                 # Синхронизация состава
                 async with AppSession() as s:
@@ -1641,7 +1643,8 @@ async def _run_warehouse_until_event(warehouse_id: str, shard_idx: int, shard_co
                         await _warmup_or_sync_snapshot(s, warehouse_id, all_robot_ids)
                         await _emit_positions_snapshot_force(warehouse_id)
                         if (not USE_REDIS_COORD) or (USE_REDIS_COORD and shard_idx == COORDINATOR_SHARD_INDEX):
-                            await _emit_product_scans_init(warehouse_id)
+                            if EMIT_AUTOSEND_INIT:
+                                await _emit_product_scans_init(warehouse_id)
 
                 # Синхронизация состава
                 async with AppSession() as s:

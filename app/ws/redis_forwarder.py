@@ -15,18 +15,28 @@ async def _dispatch_to_ws(event: Dict[str, Any]) -> None:
     Отправляет событие во WS-комнату, совпадающую с warehouse_id.
     События без warehouse_id игнорируются (неизвестно куда слать).
     """
+    
     wh: Optional[str] = event.get("warehouse_id")
     if not wh:
         # Диагностика: попались события без warehouse_id — они не попадут в комнату
         et = event.get("type")
         print(f"⚠️ redis_forwarder: skip event without warehouse_id (type={et})", flush=True)
         return
+    target_sid: Optional[str] = event.get("unicast_session_id")
+
     try:
+        if target_sid:
+            sent = await manager.unicast_json(wh, target_sid, event)
+            print(f"📤 WS unicast: wh={wh} sid={target_sid} type={event.get('type')} sent={sent}", flush=True)
+            return
+
         sent = await manager.broadcast_json(wh, event)
         print(f"📤 WS send: wh={wh} type={event.get('type')} sent={sent}", flush=True)
+
     except Exception as e:
-        # Важно логировать и склад, и тип — помогает ловить расхождения join-ов комнат на фронте
         print(f"⚠️ redis_forwarder: broadcast error for wh={wh}: {e}. event={event}", flush=True)
+
+    
 
 
 async def start_redis_forwarder(

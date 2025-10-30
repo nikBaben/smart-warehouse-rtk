@@ -9,12 +9,13 @@ from app.ws.products_events import publish_product_snapshot
 from app.events.bus import get_bus_for_current_loop, ROBOT_CH
 from app.ws.robot_status_count_streamer import publish_robot_status_count_snapshot
 from app.ws.robot_activity_streamer import publish_robot_activity_series_from_history
+from app.ws.product_scan_publisher import publish_initial_product_scan_unicast
 
 router = APIRouter()
 
 @router.websocket("/ws/warehouses/{warehouse_id}")
 async def ws_warehouse(ws: WebSocket, warehouse_id: str = Path(...)):
-    await manager.connect(ws, warehouse_id)
+    session_id = await manager.connect(ws, warehouse_id)
     try:
         async with async_session() as session:
             await publish_robot_avg_snapshot(session, warehouse_id)
@@ -24,6 +25,7 @@ async def ws_warehouse(ws: WebSocket, warehouse_id: str = Path(...)):
             await publish_product_snapshot(session, warehouse_id)
             await publish_robot_activity_series_from_history(session, warehouse_id, force=True)
             await publish_robot_status_count_snapshot(session, warehouse_id)
+            await publish_initial_product_scan_unicast(session, warehouse_id, session_id)
         while True:
             await ws.receive_text()  # держим соединение
     except WebSocketDisconnect:
