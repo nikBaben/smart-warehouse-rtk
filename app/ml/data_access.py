@@ -37,9 +37,9 @@ async def fetch_inventory_history(product_id: str, wharehouse_id: Optional[str]=
 
 
 async def fetch_snapshot_at(product_id: str, wharehouse_id: Optional[str], at_time: datetime) -> Optional[float]:
-    """Return latest inventory snapshot (stock) for a product/warehouse at or before at_time.
+    """Возвращает последний снимок запасов (stock) для товара/склада на момент at_time или ранее.
 
-    Returns float stock or None if no snapshot exists.
+    Возвращает float остаток или None если снимок не найден.
     """
     async with async_session() as session:
         stmt = select(InventoryHistory).where(InventoryHistory.product_id == product_id)
@@ -60,12 +60,12 @@ async def build_event_timeseries(product_id: str,
                                   freq: str = "D",
                                   include_planned: bool = True,
                                   include_actuals: bool = True) -> pd.DataFrame:
-    """Build a timeseries of incoming/outgoing events from delivery_items and shipment_items.
+    """Строит временной ряд событий входящих/исходящих из delivery_items и shipment_items.
 
-    - planned events use parent scheduled_at and ordered_quantity
-    - actual events use parent delivered_at/shipped_at and fact_quantity (fallback to item.created_at)
+    - плановые события используют scheduled_at родителя и ordered_quantity
+    - фактические события используют delivered_at/shipped_at родителя и fact_quantity (fallback на item.created_at)
 
-    Returns DataFrame with columns: ds, incoming, outgoing, net_outgoing aggregated by `freq`.
+    Возвращает DataFrame с колонками: ds, incoming, outgoing, net_outgoing агрегированными по `freq`.
     """
     async with async_session() as session:
         stmt_in = select(DeliveryItems).where(DeliveryItems.product_id == product_id)
@@ -140,10 +140,7 @@ async def build_event_timeseries(product_id: str,
 async def fetch_outgoing_timeseries(product_id: str, wharehouse_id: Optional[str] = None,
                                     start: Optional[datetime] = None, end: Optional[datetime] = None,
                                     freq: str = "D") -> pd.DataFrame:
-    """Return historical outgoing (shipments only) for ML training.
-
-    Returns DataFrame with columns: ds, y (outgoing quantity aggregated by freq).
-    This is used to train demand forecasting models.
+    """Возвращает DataFrame с колонками: ds, y (количество исходящих товаров, агрегированное по freq).
     """
     async with async_session() as session:
         stmt_out = select(ShipmentItems).where(ShipmentItems.product_id == product_id)
@@ -184,13 +181,13 @@ async def predict_depletion_from_snapshot(product_id: str,
                                          as_of: datetime,
                                          horizon_days: int = 365,
                                          freq: str = "D") -> Optional[datetime]:
-    """Deterministic depletion predictor using snapshot + planned events.
+    """Детерминированный предсказатель истощения запасов на основе снимка + плановых событий.
 
-    Algorithm:
-      - get snapshot stock at `as_of`
-      - collect planned events with scheduled_at in (as_of, as_of + horizon]
-      - aggregate by `freq` and apply incoming/outgoing to stock cumulatively
-      - return first datetime when stock <= 0, otherwise None
+    Алгоритм:
+      - получить снимок запасов на момент `as_of`
+      - собрать плановые события с scheduled_at в интервале (as_of, as_of + horizon]
+      - агрегировать по `freq` и применить incoming/outgoing к остаткам накопительно
+      - вернуть первую дату когда stock <= 0, иначе None
     """
     initial = await fetch_snapshot_at(product_id, wharehouse_id, as_of)
     if initial is None:
@@ -253,12 +250,12 @@ async def fetch_consumption_timeseries(product_id: str, wharehouse_id: Optional[
 async def fetch_movement_timeseries(product_id: str, wharehouse_id: Optional[str] = None,
                                     start: Optional[datetime] = None, end: Optional[datetime] = None,
                                     freq: str = "D"):
-    """Return daily aggregated incoming/outgoing events for a product and optional warehouse.
+    """Возвращает ежедневно агрегированные события входящих/исходящих для товара и опционального склада.
 
-    Returns DataFrame with columns:
-      - ds (period start as datetime)
-      - incoming (sum of incoming fact_quantity)
-      - outgoing (sum of outgoing fact_quantity)
+    Возвращает DataFrame с колонками:
+      - ds (начало периода как datetime)
+      - incoming (сумма входящих fact_quantity)
+      - outgoing (сумма исходящих fact_quantity)
       - net_outgoing (outgoing - incoming)
     """
     async with async_session() as session:
@@ -347,12 +344,12 @@ async def fetch_snapshot_at(product_id: str, wharehouse_id: Optional[str], at_ti
 async def build_event_timeseries(product_id: str, wharehouse_id: Optional[str] = None,
                                   start: Optional[datetime] = None, end: Optional[datetime] = None,
                                   freq: str = "D", include_planned: bool = True, include_actuals: bool = True):
-    """Build event-only timeseries of incoming/outgoing for prediction.
+    """Строит временной ряд только из событий входящих/исходящих для предсказаний.
 
-    - include_planned: include scheduled_at events (ordered quantities)
-    - include_actuals: include realized events (delivered_at/shipped_at with fact_quantity)
+    - include_planned: включить события scheduled_at (плановые количества)
+    - include_actuals: включить реализованные события (delivered_at/shipped_at с fact_quantity)
 
-    Returns DataFrame with ds, incoming, outgoing, net_outgoing aggregated by `freq`.
+    Возвращает DataFrame с ds, incoming, outgoing, net_outgoing агрегированными по `freq`.
     """
     async with async_session() as session:
         stmt_in = select(DeliveryItems).where(DeliveryItems.product_id == product_id)
@@ -420,10 +417,10 @@ async def build_event_timeseries(product_id: str, wharehouse_id: Optional[str] =
 
 
 def estimate_depletion_date(initial_stock: float, events_df: pd.DataFrame, freq: str = "D", horizon_days: int = 365):
-    """Deterministic estimate: given initial stock and planned events (events_df with ds, incoming, outgoing),
-    compute cumulative stock over horizon and return first date where stock <= 0.
+    """Детерминированная оценка: при заданном начальном остатке и плановых событиях (events_df с ds, incoming, outgoing),
+    вычислить накопительный остаток на горизонте и вернуть первую дату когда остаток <= 0.
 
-    Returns datetime.date or None if not depleted within horizon.
+    Возвращает datetime.date или None если истощение не произошло в пределах горизонта.
     """
     if initial_stock is None:
         return None
@@ -434,7 +431,6 @@ def estimate_depletion_date(initial_stock: float, events_df: pd.DataFrame, freq:
         df["net_outgoing"] = df.get("outgoing", 0) - df.get("incoming", 0)
 
     df = df.set_index(pd.to_datetime(df["ds"])).sort_index()
-    # resample to ensure continuous timeline
     idx = pd.date_range(start=df.index.min(), periods=max(horizon_days, len(df)), freq=freq)
     daily = df["net_outgoing"].resample(freq).sum().reindex(idx, fill_value=0)
 
@@ -447,9 +443,9 @@ def estimate_depletion_date(initial_stock: float, events_df: pd.DataFrame, freq:
 
 async def predict_depletion_from_snapshot(product_id: str, wharehouse_id: Optional[str], as_of: datetime,
                                          horizon_days: int = 365, freq: str = "D"):
-    """Helper that returns deterministic depletion estimate using snapshot at `as_of` and planned events.
+    """Вспомогательная функция которая возвращает детерминированную оценку истощения используя снимок на `as_of` и плановые события.
 
-    Returns depletion datetime or None
+    Возвращает datetime истощения или None
     """
     initial = await fetch_snapshot_at(product_id, wharehouse_id, as_of)
     if initial is None:
@@ -462,9 +458,9 @@ async def predict_depletion_from_snapshot(product_id: str, wharehouse_id: Option
 
 async def fetch_planned_incoming(product_id: str, wharehouse_id: Optional[str],
                                   start: datetime, end: datetime, freq: str = "D") -> pd.DataFrame:
-    """Fetch planned deliveries (scheduled_at + ordered_quantity) for prediction.
+    """Получить плановые поставки (scheduled_at + ordered_quantity) для предсказаний.
     
-    Returns DataFrame with columns: ds, incoming
+    Возвращает DataFrame с колонками: ds, incoming
     """
     async with async_session() as session:
         stmt = select(DeliveryItems).where(DeliveryItems.product_id == product_id)
@@ -495,15 +491,15 @@ def predict_depletion_with_model(initial_stock: float,
                                   planned_incoming_df: pd.DataFrame,
                                   predicted_outgoing_df: pd.DataFrame,
                                   freq: str = "D") -> Optional[datetime]:
-    """Calculate depletion date using: stock + planned_incoming - predicted_outgoing.
+    """Вычислить дату истощения по формуле: остаток + плановые_поставки - предсказанные_отгрузки.
     
-    Args:
-        initial_stock: current stock level
-        planned_incoming_df: DataFrame with columns ['ds', 'incoming']
-        predicted_outgoing_df: DataFrame with columns ['ds', 'yhat'] (Prophet forecast)
+    Аргументы:
+        initial_stock: текущий уровень остатка
+        planned_incoming_df: DataFrame с колонками ['ds', 'incoming']
+        predicted_outgoing_df: DataFrame с колонками ['ds', 'yhat'] (прогноз Prophet)
     
-    Returns:
-        datetime when stock <= 0, or None if no depletion
+    Возвращает:
+        datetime когда остаток <= 0, или None если истощения нет
     """
     if initial_stock is None or initial_stock <= 0:
         return None
