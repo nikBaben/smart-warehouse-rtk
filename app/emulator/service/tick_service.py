@@ -24,7 +24,7 @@ from app.emulator.config import SCAN_MAX_DURATION_MS
 from app.emulator.service.redis_coord_service import claim_global, free_claim_global
 from app.emulator.service.events_service import emit_position_if_needed
 from app.emulator.service.positions_service import maybe_emit_positions_snapshot_inmem
-from app.emulator.service.scanning_service import start_scan, safe_finish_scan
+from app.emulator.service.scanning_service import start_scan, safe_finish_scan,_log_robot_status
 
 def robot_xy(robot: Robot) -> tuple[int, int]:
     return int(robot.current_shelf or 0), int(robot.current_row or 0)
@@ -160,7 +160,6 @@ async def robot_tick(session, robot_id: str, tick_id: Optional[int] = None) -> N
         TARGETS.pop(robot.id, None)
         await session.flush()
         update_wh_snapshot_from_robot(robot)
-        from .scanning import _log_robot_status
         await _log_robot_status(session, robot, "charging")
         await emit_position_if_needed(robot)
         await maybe_emit_positions_snapshot_inmem(wid)
@@ -182,7 +181,6 @@ async def robot_tick(session, robot_id: str, tick_id: Optional[int] = None) -> N
         eligible_now = cache["by_cell"][key]
         if eligible_now:
             await start_scan(robot, nx, ny)
-            from .scanning import _log_robot_status
             await _log_robot_status(session, robot, "scanning")
         else:
             await free_claim_global(wid, goal)
