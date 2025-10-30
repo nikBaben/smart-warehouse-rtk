@@ -2,6 +2,8 @@ from uuid import uuid4
 from typing import Optional
 from app.repositories.shipment_repo import ShipmentRepository
 from app.repositories.shipment_items_repo import ShipmentItemsRepository
+from app.schemas.shipment_items import ShipmentItemsCreate
+from app.schemas.shipment import ShipmentCreate
 
 
 class ShipmentService:
@@ -9,7 +11,7 @@ class ShipmentService:
         self.repo = repo
         self.items_repo = items_repo
 
-    async def create_shipment(self, data):
+    async def create_shipment(self, data: ShipmentCreate):
         sh_id = getattr(data, "id", None) or str(uuid4())
         sh = await self.repo.create(
             id=sh_id,
@@ -24,7 +26,7 @@ class ShipmentService:
         )
         return sh
 
-    async def add_item(self, data):
+    async def add_item(self, data: ShipmentItemsCreate):
         si_id = getattr(data, "id", None) or str(uuid4())
         si = await self.items_repo.create(
             id=si_id,
