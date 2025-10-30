@@ -36,6 +36,7 @@ import signal
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set, Tuple
+from collections import deque
 
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine
@@ -74,9 +75,11 @@ COORDINATOR_SHARD_INDEX = int(os.getenv("COORDINATOR_SHARD_INDEX", "0"))
 # =========================
 # Константы симуляции
 # =========================
-FIELD_X = 50
-FIELD_Y = 26
-DOCK_X, DOCK_Y = 0, 0
+# ВНИМАНИЕ: после смены осей shelf=X, row=Y — размеры также поменяли местами.
+# Теперь по X (shelf) допустимы 0..26 (0 = 'нет полки'), по Y (row) допустимы 0..49.
+FIELD_X = 26
+FIELD_Y = 50
+DOCK_X, DOCK_Y = 0, 0  # док остаётся в (0,0)
 
 TICK_INTERVAL = float(os.getenv("ROBOT_TICK_INTERVAL", "0.5"))
 SCAN_DURATION = timedelta(seconds=int(os.getenv("SCAN_DURATION_SEC", "6")))
@@ -95,7 +98,7 @@ POSITIONS_MIN_INTERVAL_MS = int(os.getenv("POSITIONS_MIN_INTERVAL_MS", "75"))
 POSITIONS_KEEPALIVE_MS = int(os.getenv("POSITIONS_KEEPALIVE_MS", "1000"))
 KEEPALIVE_FULL = os.getenv("KEEPALIVE_FULL", "1") == "1"
 POSITIONS_DIFFS = os.getenv("POSITIONS_DIFFS", "0") == "1"
-# === БЫЛ БАГ: флаг одиночных позиций был инвертирован. Фикс:
+# === БЫЛ БАГ: флаг одиночных позиций был инвертирован. Фикс оставляем:
 SEND_ROBOT_POSITION = os.getenv("SEND_ROBOT_POSITION", "1") == "0"
 
 # Разрежённый поиск цели
@@ -119,6 +122,12 @@ SCAN_MAX_DURATION_MS = int(os.getenv(
 # раз в 1 секунду пытаемся отправить обновление; максимум 2 секунды без пакета (keepalive)
 POSITIONS_BROADCAST_INTERVAL_MS = int(os.getenv("POSITIONS_BROADCAST_INTERVAL_MS", "1000"))
 POSITIONS_MAX_INTERVAL_MS = int(os.getenv("POSITIONS_MAX_INTERVAL_MS", "2000"))
+
+# === «Последние сканы» =======================================================
+LAST_SCANS_LIMIT = int(os.getenv("LAST_SCANS_LIMIT", "20"))
+
+def _last_scans_key(warehouse_id: str) -> str:
+    return f"wh:{warehouse_id}:lastscans"   # Redis list (LPUSH newest)
 
 # =========================
 # Redis helpers (lazy pool)
@@ -199,7 +208,188 @@ def _scan_lock(rid: str) -> asyncio.Lock:
         lk = _SCAN_LOCKS[rid] = asyncio.Lock()
     return lk
 
+# === Кеш «последних сканов» ==================================================
+_LAST_SCANS_CACHE: Dict[str, deque] = {}   # wid -> deque[dict] (maxlen=LAST_SCANS_LIMIT)
 
+def _last_scans_deque(wid: str) -> deque:
+    dq = _LAST_SCANS_CACHE.get(wid)
+    if dq is None or dq.maxlen != LAST_SCANS_LIMIT:
+        dq = _LAST_SCANS_CACHE[wid] = deque(maxlen=LAST_SCANS_LIMIT)
+    return dq
+
+def _ih_row_to_payload(row: dict) -> dict:
+    """
+    Унифицированное представление элемента скана (поля как у InventoryHistory).
+    row — словарь с ключами: id, product_id, robot_id, warehouse_id, current_zone, current_row, current_shelf,
+    name, category, article, stock, min_stock, optimal_stock, status, (опц.) created_at
+    """
+    out = {
+        "id": row["id"],
+        "product_id": row["product_id"],
+        "robot_id": row["robot_id"],
+        "warehouse_id": row["warehouse_id"],
+        "current_zone": row.get("current_zone"),
+        "current_row": row.get("current_row"),
+        "current_shelf": row.get("current_shelf"),
+        "name": row.get("name"),
+        "category": row.get("category"),
+        "article": row.get("article"),
+        "stock": row.get("stock"),
+        "min_stock": row.get("min_stock"),
+        "optimal_stock": row.get("optimal_stock"),
+        "status": row.get("status"),
+    }
+    if "created_at" in row and row["created_at"] is not None:
+        out["scanned_at"] = row["created_at"] if isinstance(row["created_at"], str) else row["created_at"].isoformat()
+    return out
+
+async def _append_last_scans(wid: str, items: List[dict]) -> None:
+    """
+    items — список элементов payload (_ih_row_to_payload), упорядоченных по времени (старые -> новые).
+    Обновляет локальный deque и Redis (если включён).
+    """
+    if not items:
+        return
+
+    # 1) локальный кеш: добавляем по порядку (старые -> новые)
+    dq = _last_scans_deque(wid)
+    for it in items:
+        dq.append(it)  # deque с maxlen сам подрежет
+
+    # 2) Redis: newest слева; значит пушим справа-налево (новые вначале)
+    if USE_REDIS_COORD or USE_REDIS_CLAIMS:
+        try:
+            r = await _get_redis()
+            if r is not None:
+                key = _last_scans_key(wid)
+                pipe = r.pipeline()
+                for it in reversed(items):  # от новых к старым
+                    pipe.lpush(key, json.dumps(it, ensure_ascii=False))
+                pipe.ltrim(key, 0, LAST_SCANS_LIMIT - 1)
+                await pipe.execute()
+        except Exception:
+            pass  # best-effort
+
+async def _get_last_scans(wid: str, session: Optional[AsyncSession] = None) -> List[dict]:
+    """
+    Возвращает последние сканы (newest first):
+      1) при наличии Redis — читаем LRANGE (0..N-1);
+      2) иначе — из локального deque;
+      3) если пусто и есть session — один раз прогреваем SELECT ... LIMIT.
+    """
+    # 1) Redis — источник правды для мультипроцесса
+    if USE_REDIS_COORD or USE_REDIS_CLAIMS:
+        try:
+            r = await _get_redis()
+            if r is not None:
+                raw = await r.lrange(_last_scans_key(wid), 0, LAST_SCANS_LIMIT - 1)
+                scans = []
+                for s in raw:
+                    try:
+                        scans.append(json.loads(s))
+                    except Exception:
+                        pass
+                if scans:
+                    # обновим локальный deque (он хранит старые->новые в «хвосте»)
+                    dq = _last_scans_deque(wid)
+                    dq.clear()
+                    for it in reversed(scans):  # scans: newest first -> делаем старые -> новые
+                        dq.append(it)
+                    return scans
+        except Exception:
+            pass
+
+    # 2) локальный deque
+    dq = _last_scans_deque(wid)
+    if dq:
+        # deque: старые -> новые в конце; вернём newest first
+        return list(dq)[-LAST_SCANS_LIMIT:][::-1]
+
+    # 3) прогрев из БД при первой необходимости
+    if session is not None:
+        try:
+            # пробуем по created_at, fallback по id
+            try:
+                res = await session.execute(
+                    select(InventoryHistory)
+                    .where(InventoryHistory.warehouse_id == wid)
+                    .order_by(InventoryHistory.created_at.desc())
+                    .limit(LAST_SCANS_LIMIT)
+                )
+            except Exception:
+                res = await session.execute(
+                    select(InventoryHistory)
+                    .where(InventoryHistory.warehouse_id == wid)
+                    .order_by(InventoryHistory.id.desc())
+                    .limit(LAST_SCANS_LIMIT)
+                )
+            rows = res.scalars().all()
+            scans = []
+            for ih in rows:
+                scans.append(_ih_row_to_payload({
+                    "id": ih.id,
+                    "product_id": ih.product_id,
+                    "robot_id": ih.robot_id,
+                    "warehouse_id": ih.warehouse_id,
+                    "current_zone": ih.current_zone,
+                    "current_row": ih.current_row,
+                    "current_shelf": ih.current_shelf,
+                    "name": ih.name,
+                    "category": ih.category,
+                    "article": ih.article,
+                    "stock": ih.stock,
+                    "min_stock": ih.min_stock,
+                    "optimal_stock": ih.optimal_stock,
+                    "status": ih.status,
+                    **({"created_at": getattr(ih, "created_at")} if hasattr(ih, "created_at") else {}),
+                }))
+            # прогреем локальный и Redis (добавляем в хронологическом порядке: старые -> новые)
+            await _append_last_scans(wid, list(reversed(scans)))
+            return scans
+        except Exception:
+            pass
+
+    return []
+
+async def _emit_last_scans(
+    session: AsyncSession,
+    warehouse_id: str,
+    robot_id: Optional[str],
+    reason: Optional[str] = None,
+    scans_override: Optional[List[dict]] = None,   # ← новое
+) -> None:
+    scans = scans_override if scans_override is not None else await _get_last_scans(warehouse_id, session=session)
+    payload = {
+        "type": "product.scan",
+        "warehouse_id": warehouse_id,
+        "robot_id": robot_id,
+        "scans": scans,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    if reason:
+        payload["reason"] = reason
+    await _emit(payload)
+
+
+async def _emit_product_scans_init(warehouse_id: str) -> None:
+    """
+    Разово публикует product.scan с последними N сканами при старте процесса/шарда.
+    """
+    async with AppSession() as s:
+        async with s.begin():
+            await _emit_last_scans(s, warehouse_id, robot_id=None, reason="autosend_init")
+
+
+# === ПУБЛИЧНЫЙ ХУК ДЛЯ WEBSOCKET-ПОДКЛЮЧЕНИЯ ================================
+async def emit_product_scan_on_connect(warehouse_id: str, robot_id: Optional[str] = None) -> None:
+    """
+    Вызывайте из WebSocket on_connect / on_subscribe.
+    Немедленно отправляет один product.scan с последними N сканами (кеш/Redis, при пустом — прогрев из БД).
+    """
+    async with AppSession() as s:
+        async with s.begin():
+            # reason помогает дебажить в клиенте, можно убрать
+            await _emit_last_scans(s, warehouse_id, robot_id, reason="ws_connect_init")
 
 # Текущий шард (для справки/логики)
 _SHARD_IDX = 0
@@ -226,8 +416,13 @@ def shelf_str_to_num(s: Optional[str]) -> int:
     return ALPH.index(c) + 1 if c in ALPH else 0
 
 def clamp_xy(x: int, y: int) -> Tuple[int, int]:
-    x = max(0, min(FIELD_X - 1, x))
-    y = max(0, min(FIELD_Y, y))
+    """
+    После перестановки осей:
+      X (shelf) допустимо 0..FIELD_X (0 = нет полки),
+      Y (row)   допустимо 0..FIELD_Y-1.
+    """
+    x = max(0, min(FIELD_X, x))
+    y = max(0, min(FIELD_Y - 1, y))
     return x, y
 
 def manhattan(a: Tuple[int, int], b: Tuple[int, int]) -> int:
@@ -241,6 +436,15 @@ def _claim_local(warehouse_id: str, cell: Tuple[int, int]) -> None:
 
 def _free_claim_local(warehouse_id: str, cell: Tuple[int, int]) -> None:
     _claimed_set(warehouse_id).discard(cell)
+
+# ====== АДАПТЕРЫ координат робота (shelf = X, row = Y) =======================
+def robot_xy(robot: Robot) -> Tuple[int, int]:
+    # shelf -> X, row -> Y
+    return int(robot.current_shelf or 0), int(robot.current_row or 0)
+
+def set_robot_xy(robot: Robot, x: int, y: int) -> None:
+    robot.current_shelf = int(x or 0)
+    robot.current_row = int(y or 0)
 
 async def _claim_global(warehouse_id: str, cell: Tuple[int, int]) -> bool:
     """Глобальная бронь через Redis SET NX PX; если USE_REDIS_CLAIMS=0, используем локальную."""
@@ -329,14 +533,15 @@ async def _emit_position_if_needed(robot: Robot) -> None:
     if (now - last).total_seconds() < POSITION_RATE_LIMIT_PER_ROBOT:
         return
     _LAST_POS_SENT_AT[robot.id] = now
-    y = int(robot.current_shelf or 0)
+
+    x, y = robot_xy(robot)
     await _emit({
         "type": "robot.position",
         "warehouse_id": robot.warehouse_id,
         "robot_id": robot.id,
-        "x": int(robot.current_row or 0),
+        "x": x,
         "y": y,
-        "shelf": shelf_num_to_str(y),
+        "shelf": shelf_num_to_str(x),
         "battery_level": round(float(robot.battery_level or 0.0), 1),
         "status": (robot.status or "idle"),
         "ts": now.isoformat(),
@@ -355,15 +560,15 @@ def _update_wh_snapshot_from_robot(robot: Robot) -> None:
     wh = robot.warehouse_id
     _ROBOT_WH[robot.id] = wh
 
-    y_int = int(robot.current_shelf or 0)
+    x_int, y_int = robot_xy(robot)
     now_iso = datetime.now(timezone.utc).isoformat()
 
     # «база» без updated_at — чтобы корректно сравнить, менялось ли что-то существенное
     base = {
         "robot_id": robot.id,
-        "x": int(robot.current_row or 0),
+        "x": x_int,
         "y": y_int,
-        "shelf": shelf_num_to_str(y_int),
+        "shelf": shelf_num_to_str(x_int),
         "battery_level": round(float(robot.battery_level or 0.0), 1),
         "status": (robot.status or "idle"),
     }
@@ -521,7 +726,8 @@ async def _warmup_or_sync_snapshot(session: AsyncSession, warehouse_id: str, rob
             select(Robot.id, Robot.current_row, Robot.current_shelf, Robot.battery_level, Robot.status)
             .where(Robot.warehouse_id == warehouse_id, Robot.id.in_(robot_ids))
         )
-        db_rows = {rid: (x, y, battery, status) for rid, x, y, battery, status in res.all()}
+        # ВНИМАНИЕ: теперь x = current_shelf, y = current_row
+        db_rows = {rid: (shelf, row, battery, status) for rid, row, shelf, battery, status in res.all()}
     else:
         db_rows = {}
     changed = False
@@ -535,13 +741,14 @@ async def _warmup_or_sync_snapshot(session: AsyncSession, warehouse_id: str, rob
         for rid in robot_ids:
             x, y, battery, status = db_rows.get(rid, (0, 0, 0.0, "idle"))
             _ROBOT_WH[rid] = warehouse_id
+            x_int = int(x or 0)
             y_int = int(y or 0)
             now_iso = datetime.now(timezone.utc).isoformat()
             new_item = {
                 "robot_id": rid,
-                "x": int(x or 0),
+                "x": x_int,
                 "y": y_int,
-                "shelf": shelf_num_to_str(y_int),
+                "shelf": shelf_num_to_str(x_int),
                 "battery_level": round(float(battery or 0.0), 1),
                 "status": status or "idle",
                 "updated_at": (snap.get(rid) or {}).get("updated_at") or now_iso,  # стартовое значение
@@ -556,6 +763,10 @@ async def _warmup_or_sync_snapshot(session: AsyncSession, warehouse_id: str, rob
 # Выборки из БД
 # =========================
 async def _eligible_cells(session: AsyncSession, warehouse_id: str, cutoff: datetime) -> List[Tuple[int, int]]:
+    """
+    Возвращает список клеток (X, Y), где X = shelf (число 1..FIELD_X), Y = row (0..FIELD_Y-1),
+    для которых в ячейке есть товары, не прошедшие cooldown.
+    """
     rows = await session.execute(
         select(Product.current_row, func.upper(func.trim(Product.current_shelf)))
         .where(
@@ -566,18 +777,17 @@ async def _eligible_cells(session: AsyncSession, warehouse_id: str, cutoff: date
         .distinct()
     )
     cells: List[Tuple[int, int]] = []
-    for x, shelf_str in rows.all():
-        y = shelf_str_to_num(shelf_str)
-        if y > 0:
-            x_int = int(x or 0)
-            if 0 <= x_int <= 49 and 1 <= y <= 26:
-                cells.append((x_int, y))
+    for y_int, shelf_str in rows.all():
+        x = shelf_str_to_num(shelf_str)  # shelf-буква -> X
+        y = int(y_int or 0)              # row -> Y
+        if 1 <= x <= FIELD_X and 0 <= y <= FIELD_Y - 1:
+            cells.append((x, y))
     return cells
 
 async def _eligible_products_in_cell(
     session: AsyncSession, warehouse_id: str, x: int, y: int, cutoff: datetime
 ) -> List[Product]:
-    shelf = shelf_num_to_str(y)
+    shelf = shelf_num_to_str(x)
     res = await session.execute(
         select(Product)
         .options(
@@ -589,8 +799,8 @@ async def _eligible_products_in_cell(
         )
         .where(
             Product.warehouse_id == warehouse_id,
-            Product.current_row == x,
-            func.upper(func.trim(Product.current_shelf)) == shelf,
+            Product.current_row == y,                              # row = Y
+            func.upper(func.trim(Product.current_shelf)) == shelf, # shelf = буква(X)
             (Product.last_scanned_at.is_(None)) | (Product.last_scanned_at < cutoff),
         )
     )
@@ -608,24 +818,18 @@ async def _start_scan(robot: Robot, x: int, y: int) -> None:
     _update_wh_snapshot_from_robot(robot)
 
 async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
-    rx, ry = _SCANNING_CELL.pop(robot.id, (int(robot.current_row or 0), int(robot.current_shelf or 0)))
+    rx, ry = _SCANNING_CELL.pop(robot.id, robot_xy(robot))
     _SCANNING_UNTIL.pop(robot.id, None)
     _SCANNING_STARTED_AT.pop(robot.id, None)
 
-    shelf = shelf_num_to_str(ry)
+    shelf = shelf_num_to_str(rx)  # shelf-строка определяется по X
     if shelf == "0":
-        await _emit({
-            "type": "product.scan",
-            "warehouse_id": robot.warehouse_id,
-            "robot_id": robot.id,
-            "x": rx, "y": ry, "shelf": shelf,
-            "products": [],
-            "reason": "no_valid_shelf",
-        })
         await _free_claim_global(robot.warehouse_id, (rx, ry))
         robot.status = "idle"
         _update_wh_snapshot_from_robot(robot)
         await _log_robot_status(session, robot, "idle")
+        # отсылаем последние 20 с reason
+        await _emit_last_scans(session, robot.warehouse_id, robot.id, reason="no_valid_shelf")
         return
 
     cutoff = datetime.now(timezone.utc) - RESCAN_COOLDOWN
@@ -635,23 +839,16 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
     now_iso = now_dt.isoformat()
 
     if not products:
-        await _emit({
-            "type": "product.scan",
-            "warehouse_id": robot.warehouse_id,
-            "robot_id": robot.id,
-            "x": rx, "y": ry, "shelf": shelf,
-            "products": [],
-            "reason": "under_cooldown",
-            "ts": now_iso,
-        })
         await _free_claim_global(robot.warehouse_id, (rx, ry))
         robot.status = "idle"
         _update_wh_snapshot_from_robot(robot)
         await _log_robot_status(session, robot, "idle")
+        # последние 20 без SQL
+        await _emit_last_scans(session, robot.warehouse_id, robot.id, reason="under_cooldown")
         return
 
     rows: List[dict] = []
-    payload: List[dict] = []
+    payload_for_cache: List[dict] = []
     for p in products:
         stock = int(p.stock or 0)
         status = "ok"
@@ -660,32 +857,27 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
         elif p.optimal_stock is not None and stock < p.optimal_stock:
             status = "low"
 
-        rows.append(
-            {
-                "id": f"ih_{os.urandom(6).hex()}",
-                "product_id": p.id,
-                "robot_id": robot.id,
-                "warehouse_id": robot.warehouse_id,
-                "current_zone": getattr(p, "current_zone", "Хранение"),
-                "current_row": rx,
-                "current_shelf": shelf,
-                "name": p.name,
-                "category": p.category,
-                "article": getattr(p, "article", None) or "unknown",
-                "stock": stock,
-                "min_stock": p.min_stock,
-                "optimal_stock": p.optimal_stock,
-                "status": status,
-            }
-        )
-        payload.append(
-            {
-                "id": p.id, "name": p.name, "category": p.category, "article": getattr(p, "article", None),
-                "current_row": rx, "current_shelf": shelf, "shelf_num": ry,"current_zone": p.current_zone,
-                "stock": stock, "status": status, "scanned_at": now_iso,
-            }
-        )
+        row_dict = {
+            "id": f"ih_{os.urandom(6).hex()}",
+            "product_id": p.id,
+            "robot_id": robot.id,
+            "warehouse_id": robot.warehouse_id,
+            "current_zone": getattr(p, "current_zone", "Хранение"),
+            "current_row": ry,           # Y
+            "current_shelf": shelf,      # буква(X)
+            "name": p.name,
+            "category": p.category,
+            "article": getattr(p, "article", None) or "unknown",
+            "stock": stock,
+            "min_stock": p.min_stock,
+            "optimal_stock": p.optimal_stock,
+            "status": status,
+        }
+        rows.append(row_dict)
+        # сразу готовим payload для кеша (+ created_at как now_iso)
+        payload_for_cache.append(_ih_row_to_payload({**row_dict, "created_at": now_iso}))
 
+    # Пишем историю и обновляем продукты
     await session.execute(insert(InventoryHistory), rows)
     await session.execute(
         update(Product)
@@ -693,14 +885,17 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
         .values(last_scanned_at=now_dt)
     )
 
-    await _emit({
-        "type": "product.scan",
-        "warehouse_id": robot.warehouse_id,
-        "robot_id": robot.id,
-        "x": rx, "y": ry, "shelf": shelf,
-        "products": payload,
-        "ts": now_iso,
-    })
+    # Обновляем кеш «последние 20» (без SQL) и отсылаем событие
+    # В _append_last_scans ожидается порядок старые->новые
+    # сначала кладём новые элементы в кеш/Redis
+    await _append_last_scans(robot.warehouse_id, payload_for_cache)
+
+    # затем берём актуальные "последние 20" (newest first) из кеша/Redis БЕЗ SQL
+    scans20 = await _get_last_scans(robot.warehouse_id)
+
+    # и шлём именно их
+    await _emit_last_scans(session, robot.warehouse_id, robot.id, scans_override=scans20)
+
 
     await _free_claim_global(robot.warehouse_id, (rx, ry))
     robot.status = "idle"
@@ -722,8 +917,8 @@ async def _safe_finish_scan(session: AsyncSession, robot: Robot) -> None:
     try:
         await _finish_scan(session, robot)
     except Exception as e:
-        # Повтор текущей вашей логики safe-очистки и отправки reason=scan_error
-        rx, ry = int(robot.current_row or 0), int(robot.current_shelf or 0)
+        # Повтор текущей логики safe-очистки и отправки reason=scan_error
+        rx, ry = robot_xy(robot)
         _SCANNING_CELL.pop(robot.id, None)
         _SCANNING_UNTIL.pop(robot.id, None)
         _SCANNING_STARTED_AT.pop(robot.id, None)
@@ -733,16 +928,8 @@ async def _safe_finish_scan(session: AsyncSession, robot: Robot) -> None:
         _update_wh_snapshot_from_robot(robot)
         await _log_robot_status(session, robot, "idle")
         try:
-            await _emit({
-                "type": "product.scan",
-                "warehouse_id": robot.warehouse_id,
-                "robot_id": robot.id,
-                "x": rx, "y": ry, "shelf": shelf_num_to_str(ry),
-                "products": [],
-                "reason": "scan_error",
-                "error": (str(e) or "")[:200],
-                "ts": datetime.now(timezone.utc).isoformat(),
-            })
+            # отправляем последние 20 с reason=scan_error
+            await _emit_last_scans(session, robot.warehouse_id, robot.id, reason="scan_error")
         except Exception:
             pass
         print(f"⚠️ safe_finish_scan: error rid={robot.id}: {e}", flush=True)
@@ -756,11 +943,11 @@ async def _safe_finish_scan(session: AsyncSession, robot: Robot) -> None:
 # =========================
 async def _cell_still_eligible(session: AsyncSession, warehouse_id: str, cell: Tuple[int, int], cutoff: datetime) -> bool:
     x, y = cell
-    shelf = shelf_num_to_str(y)
+    shelf = shelf_num_to_str(x)
     row = await session.execute(
         select(Product.id).where(
             Product.warehouse_id == warehouse_id,
-            Product.current_row == x,
+            Product.current_row == y,
             func.upper(func.trim(Product.current_shelf)) == shelf,
             (Product.last_scanned_at.is_(None)) | (Product.last_scanned_at < cutoff),
         ).limit(1)
@@ -791,14 +978,13 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
     cache["cutoff"] = cutoff
 
     # 1) Сканируем?
-    # 1) Сканируем?
     if (robot.status or "").lower() == "scanning":
         # если таймер отсутствует (после рестарта) — инициализируем
         if robot.id not in _SCANNING_UNTIL:
             now = datetime.now(timezone.utc)
             _SCANNING_STARTED_AT[robot.id] = now
             _SCANNING_UNTIL[robot.id] = now + SCAN_DURATION
-            _SCANNING_CELL.setdefault(robot.id, (int(robot.current_row or 0), int(robot.current_shelf or 0)))
+            _SCANNING_CELL.setdefault(robot.id, robot_xy(robot))
 
         if FAST_SCAN_LOOP:
             # Вариант A: завершение скана делает только fast-цикл
@@ -823,7 +1009,6 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
             await _maybe_emit_positions_snapshot_inmem(robot.warehouse_id)
         return
 
-
     # 2) Зарядка?
     if (robot.status or "").lower() == "charging":
         inc = 100.0 * (TICK_INTERVAL / CHARGE_DURATION.total_seconds())
@@ -837,7 +1022,7 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
         return
 
     # 3) Поиск/поддержание цели
-    cur = (int(robot.current_row or 0), int(robot.current_shelf or 0))
+    cur = robot_xy(robot)  # (X, Y)
     goal = _TARGETS.get(robot.id)
 
     if float(robot.battery_level or 0.0) <= LOW_BATTERY_THRESHOLD:
@@ -900,7 +1085,8 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
             ny += 1 if ty > ny else -1
     else:
         cand = [(cur_x + 1, cur_y), (cur_x - 1, cur_y), (cur_x, cur_y + 1), (cur_x, cur_y - 1)]
-        valid = [(x, y) for (x, y) in cand if 0 <= x <= FIELD_X - 1 and 1 <= y <= FIELD_Y]
+        # В свободном блуждании не заходим на X=0 (нет полки), кроме как к доку по целевой траектории
+        valid = [(x, y) for (x, y) in cand if 1 <= x <= FIELD_X and 0 <= y <= FIELD_Y - 1]
         nx, ny = random.choice(valid) if valid else (cur_x, cur_y)
 
     nx, ny = clamp_xy(nx, ny)
@@ -911,7 +1097,7 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
 
     # Села батарея — на док и зарядка
     if float(robot.battery_level or 0.0) <= 0.0:
-        robot.current_row, robot.current_shelf = DOCK_X, DOCK_Y
+        set_robot_xy(robot, DOCK_X, DOCK_Y)
         robot.status = "charging"
         if goal and goal != (DOCK_X, DOCK_Y):
             await _free_claim_global(wid, goal)
@@ -923,7 +1109,7 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
         await _maybe_emit_positions_snapshot_inmem(wid)
         return
 
-    robot.current_row, robot.current_shelf = nx, ny
+    set_robot_xy(robot, nx, ny)
     robot.status = "idle"
     await session.flush()
     _update_wh_snapshot_from_robot(robot)
@@ -947,7 +1133,7 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
         eligible_now = cache["by_cell"][key]
         if eligible_now:
             await _start_scan(robot, nx, ny)
-            await _log_robot_status(session, robot, "scanning")   # <--- ДОБАВЬ
+            await _log_robot_status(session, robot, "scanning")   # <--- ДОБАВЛЕНО РАНЬШЕ, ОСТАВЛЕНО
         else:
             await _free_claim_global(wid, goal)
         _TARGETS.pop(robot.id, None)
@@ -1044,13 +1230,11 @@ async def _fast_scan_loop(warehouse_id: str) -> None:
                                 )
                                 robot = rres.scalar_one_or_none()
                                 if robot:
-    # Не держим лок! Идемпотентность внутри _safe_finish_scan
+                                    # Не держим лок! Идемпотентность внутри _safe_finish_scan
                                     await _safe_finish_scan(s, robot)
                                     await s.flush()
                                     _update_wh_snapshot_from_robot(robot)
                                     await _maybe_emit_positions_snapshot_inmem(robot.warehouse_id)
-
-
 
                     except Exception as e:
                         print(f"⚠️ fast-scan error (wh={warehouse_id}, rid={rid}): {e}", flush=True)
@@ -1272,6 +1456,7 @@ async def _run_warehouse(warehouse_id: str) -> None:
                     async with AppSession() as s:
                         await _warmup_or_sync_snapshot(s, warehouse_id, all_robot_ids)
                         await _emit_positions_snapshot_force(warehouse_id)
+                        await _emit_product_scans_init(warehouse_id)
 
                 # Синхронизация состава
                 async with AppSession() as s:
@@ -1455,6 +1640,8 @@ async def _run_warehouse_until_event(warehouse_id: str, shard_idx: int, shard_co
                     async with AppSession() as s:
                         await _warmup_or_sync_snapshot(s, warehouse_id, all_robot_ids)
                         await _emit_positions_snapshot_force(warehouse_id)
+                        if (not USE_REDIS_COORD) or (USE_REDIS_COORD and shard_idx == COORDINATOR_SHARD_INDEX):
+                            await _emit_product_scans_init(warehouse_id)
 
                 # Синхронизация состава
                 async with AppSession() as s:

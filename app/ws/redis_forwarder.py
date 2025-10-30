@@ -48,7 +48,7 @@ async def start_redis_forwarder(
 
             # Подписываемся на телеметрию роботов и на общие события
             await pubsub.subscribe(ROBOT_CH, COMMON_CH)
-            print(f"🔌 redis_forwarder: subscribed to channels: {ROBOT_CH}, {COMMON_CH}", flush=True)
+            #print(f"🔌 redis_forwarder: subscribed to channels: {ROBOT_CH}, {COMMON_CH}", flush=True)
 
             # Сбрасываем бэкофф после успешной подписки
             delay = retry_initial_delay
@@ -71,13 +71,13 @@ async def start_redis_forwarder(
                 try:
                     event = json.loads(raw)
                 except Exception:
-                    print(f"⚠️ redis_forwarder: bad JSON from {ch}: {raw!r}", flush=True)
+                    #print(f"⚠️ redis_forwarder: bad JSON from {ch}: {raw!r}", flush=True)
                     continue
 
                 # Диагностика входящего потока (можно выключить, если слишком многословно)
                 et = event.get("type")
                 wid = event.get("warehouse_id")
-                print(f"📨 redis_forwarder: {ch} ← {et} (warehouse_id={wid})", flush=True)
+                #print(f"📨 redis_forwarder: {ch} ← {et} (warehouse_id={wid})", flush=True)
 
                 # Форвардинг в WS-комнату
                 await _dispatch_to_ws(event)
@@ -87,10 +87,10 @@ async def start_redis_forwarder(
             raise
         except Exception as e:
             # Логи + экспоненциальный бэкофф при обрывах соединения / ошибках сети
-            print(
-                f"❌ redis_forwarder: connection loop error: {e}. Reconnecting in {delay:.1f}s",
-                flush=True,
-            )
+            #print(
+               # f"❌ redis_forwarder: connection loop error: {e}. Reconnecting in {delay:.1f}s",
+               # flush=True,
+            #)
             await asyncio.sleep(delay)
             delay = min(delay * 2, retry_max_delay)
 
@@ -101,4 +101,4 @@ async def start_redis_forwarder(
                     await pubsub.unsubscribe(ROBOT_CH, COMMON_CH)
                 with contextlib.suppress(Exception):
                     await pubsub.close()
-            print("🔚 redis_forwarder: pubsub closed", flush=True)
+            #print("🔚 redis_forwarder: pubsub closed", flush=True)

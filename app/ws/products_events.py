@@ -38,6 +38,7 @@ def _pack_product(p: Product) -> dict:
         "category": p.category,
         "warehouse_id": p.warehouse_id,
         "current_zone": getattr(p, "current_zone", None),
+        "status": p.status,
         "current_row": getattr(p, "current_row", 0),
         "current_shelf": current_shelf,  # ✅ теперь всегда число
         "stock": getattr(p, "stock", None),
