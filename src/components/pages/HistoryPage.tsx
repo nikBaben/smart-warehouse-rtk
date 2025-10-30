@@ -42,18 +42,6 @@ function HistoryPage(){
     }
   };
 
-  const zones = ["разгрузка", "погрузка", "заморозка", "зона особых товаров"];
-  const categories = [
-    "бытовая техника и электроника",
-    "смартфоны",
-    "комплектующие для ПК",
-    "сетевое оборудование",
-    "драгоценные металлы",
-    "редкие дорогостоящие вещества",
-    "оружие",
-    "другое",
-  ];
-
   const [search, setSearch] = useState("");
   const [selectedZone, setSelectedZone] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string[]>([]);
@@ -80,6 +68,40 @@ function HistoryPage(){
   const { warehouses, selectedWarehouse, setSelectedWarehouse, fetchWarehouses } =
     useWarehouseStore();
 
+    const [zones, setZones] = useState<string[]>([]);
+    const [categories, setCategories] = useState<string[]>([]);
+
+    // загрузка зон и категорий при выборе склада
+    useEffect(() => {
+    const fetchZonesAndCategories = async () => {
+        if (!selectedWarehouse?.id || !token) return;
+
+        try {
+        const [zonesRes, categoriesRes] = await Promise.all([
+            axios.get(
+            `https://dev.rtk-smart-warehouse.ru/api/v1/inventory_history/inventory_history_unique_zones/${selectedWarehouse.id}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+            ),
+            axios.get(
+            `https://dev.rtk-smart-warehouse.ru/api/v1/inventory_history/inventory_history_unique_categories/${selectedWarehouse.id}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+            ),
+        ]);
+
+        setZones(zonesRes.data || []);
+        setCategories(categoriesRes.data || []);
+        } catch (err) {
+        console.error("Ошибка загрузки зон или категорий:", err);
+        setZones([]);
+        setCategories([]);
+        }
+    };
+
+
+    fetchZonesAndCategories();
+    }, [selectedWarehouse?.id, token]);
+
+
   useEffect(() => {
     fetchWarehouses();
   }, []);
@@ -103,6 +125,9 @@ function HistoryPage(){
     );
 
     console.log(sortOrder);
+    console.log(categories);
+    console.log(selectedCategory);
+    console.log(appliedFilters);
 
   type Column<T> = {
     header: string;
@@ -417,7 +442,62 @@ function HistoryPage(){
                                             Экспорт в Excel
                                     </Button>
 
-                                        <Button className="h-[30px] w-[187px] text-[12px] text-[#7700FF] bg-[#F7F0FF] border-[#7700FF] border-[1px] rounded-[10px] font-medium">
+                                    <Button
+                                        className="h-[30px] w-[187px] text-[12px] text-[#7700FF] bg-[#F7F0FF] border-[#7700FF] border-[1px] rounded-[10px] font-medium"
+                                        onClick={async () => {
+                                            if (!selectedWarehouse?.id) {
+                                            alert("Выберите склад");
+                                            return;
+                                            }
+                                            if (selectedRows.length === 0) {
+                                            alert("Выберите хотя бы одну строку для экспорта");
+                                            return;
+                                            }
+
+                                            try {
+                                            const res = await fetch(
+                                                `https://dev.rtk-smart-warehouse.ru/api/v1/inventory_history/inventory_history_export_to_pdf/${selectedWarehouse.id}`,
+                                                {
+                                                method: "POST",
+                                                headers: {
+                                                    "Content-Type": "application/json",
+                                                    Authorization: `Bearer ${token}`,
+                                                },
+                                                body: JSON.stringify({ record_ids: selectedRows }),
+                                                }
+                                            );
+
+                                            if (!res.ok) {
+                                                const text = await res.text();
+                                                console.error("Ошибка сервера:", text);
+                                                throw new Error("Ошибка при получении файла");
+                                            }
+
+                                            const blob = await res.blob();
+
+                                            const disposition = res.headers.get("Content-Disposition");
+                                            let filename = "Отчёт.pdf";
+                                            if (disposition && disposition.includes("filename=")) {
+                                                filename = disposition
+                                                .split("filename=")[1]
+                                                .replace(/"/g, "")
+                                                .trim();
+                                            }
+
+                                            const url = window.URL.createObjectURL(blob);
+                                            const a = document.createElement("a");
+                                            a.href = url;
+                                            a.download = filename;
+                                            document.body.appendChild(a);
+                                            a.click();
+                                            a.remove();
+                                            window.URL.revokeObjectURL(url);
+                                            } catch (err) {
+                                            console.error(err);
+                                            alert("Не удалось скачать файл");
+                                            }
+                                        }}
+                                        >
                                             <Upload fill="#7700FF" className="h-[8px] w-[8px]"/>
                                             Экспорт в PDF
                                         </Button>

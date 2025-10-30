@@ -76,13 +76,13 @@ const historyService = {
     } = params;
 
     const payload = {
-      zone_filter: zones.length ? zones.join(",") : undefined,
-      category_filter: categories.length ? categories.join(",") : undefined,
-      status_filter: statuses.length ? statuses.join(",") : undefined,
+      zone_filter: zones.length ? zones : undefined,
+      category_filter: categories.length ? categories : undefined,
+      status_filter: statuses.length ? statuses : undefined,
       date_from: date_from || undefined,
       date_to: date_to || undefined,
       search_string: search || undefined,
-      period_buttons: periods,
+      period_buttons: periods.length ? periods : undefined,
       sort_by,
       sort_order,
       page,
