@@ -43,7 +43,7 @@ type RobotActivitySeries = {
 }
 
 type Product = {
-	id: string
+	robot_id: string
 	name: string
 	category: string
 	article: string
@@ -60,7 +60,6 @@ type Product = {
 type ProductScan = {
 	type: 'product.scan'
 	warehouse_id: string
-	robot_id: string
 	scans: Product[]
 }
 

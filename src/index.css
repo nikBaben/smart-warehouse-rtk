@@ -179,3 +179,14 @@ div::-webkit-scrollbar-thumb {
 .context-menu-delete{
   @apply cursor-pointer text-[#FF2626] hover:bg-[#FFD4D4] transition-all rounded-[10px]
 }
+
+.map-button{
+  @apply px-2 py-1 bg-white rounded-[10px] border-[1px] 
+  border border-[#CCCCCC] rounded-[6px] shadow-none
+  enabled:hover:border-[#7700FF] 
+  enabled:hover:shadow-[0_0_15px_rgba(119,0,255,0.2)]
+}
+
+.map-button-icon{
+  @apply !h-[18 px] !w-[18px]
+}

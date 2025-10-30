@@ -57,8 +57,9 @@ export function ScanStoryTable() {
 						year: '2-digit',
 						hour: '2-digit',
 						minute: '2-digit',
-					}).replace(',', ' -'),
-					robot_id: scan.robot_id,
+						second: '2-digit',
+					}).replace(',', ' -'), //заменяем запятую на тире
+					robot_id: s.robot_id,
 					current_zone: s.current_zone,
 					name_article: `${s.name} - ${s.article}`,
 					stock: String(s.stock),
