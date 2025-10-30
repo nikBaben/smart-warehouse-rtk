@@ -61,7 +61,7 @@ function HistoryPage(){
   const handleSort = (key: string, direction: "asc" | "desc") => {
     setSortBy(key);
     setSortOrder(direction);
-    setPage(1); // при смене сортировки всегда возвращаемся на первую страницу
+    setPage(1);
   };
 
   const token = localStorage.getItem("token");
@@ -71,7 +71,6 @@ function HistoryPage(){
     const [zones, setZones] = useState<string[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
 
-    // загрузка зон и категорий при выборе склада
     useEffect(() => {
     const fetchZonesAndCategories = async () => {
         if (!selectedWarehouse?.id || !token) return;
@@ -124,10 +123,8 @@ function HistoryPage(){
     sortOrder
     );
 
-    console.log(sortOrder);
-    console.log(categories);
-    console.log(selectedCategory);
-    console.log(appliedFilters);
+    console.log(selectedWarehouse?.id);
+    console.log(selectedRows);
 
   type Column<T> = {
     header: string;
