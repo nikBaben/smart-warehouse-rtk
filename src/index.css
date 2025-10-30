@@ -188,5 +188,5 @@ div::-webkit-scrollbar-thumb {
 }
 
 .map-button-icon{
-  @apply !h-[18 px] !w-[18px]
+  @apply !h-[18px] !w-[18px]
 }
