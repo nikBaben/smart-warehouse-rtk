@@ -1,24 +1,26 @@
 from __future__ import annotations
 import random
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Tuple, Set, List
+from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
 from app.models.robot import Robot
-from app.emulator.service.coords_service import clamp_xy
-from app.emulator.service.scanning_service import _log_robot_status
 
 from app.emulator.config import (
     DOCK_X, DOCK_Y, TICK_INTERVAL, CHARGE_DURATION, LOW_BATTERY_THRESHOLD,
-    BATTERY_DROP_PER_STEP, RESCAN_COOLDOWN,SCAN_MAX_DURATION_MS, IDLE_GOAL_LOOKUP_EVERY
+    BATTERY_DROP_PER_STEP, RESCAN_COOLDOWN
 )
-from app.emulator.service.coords_service import clamp_xy, manhattan, shelf_num_to_str
+from app.emulator.service.coords_service import clamp_xy
 from app.emulator.service.state_service import (
-    update_wh_snapshot_from_robot, TARGETS, wh_lock, get_tick_cache,
-    next_tick_id, ROBOT_WH, SCANNING_UNTIL, SCANNING_STARTED_AT
+    update_wh_snapshot_from_robot, TARGETS, wh_lock,
+    next_tick_id, ROBOT_WH, SCANNING_UNTIL, SCANNING_STARTED_AT, get_tick_cache,
+    get_stale_cells_from_cache
 )
-from app.emulator.service.eligibility_service import eligible_cells, eligible_products_in_cell, cell_still_eligible
+from app.emulator.service.eligibility_service import (
+    eligible_cells_with_staleness, eligible_products_in_cell, cell_still_eligible
+)
+from app.emulator.config import SCAN_MAX_DURATION_MS
 from app.emulator.service.redis_coord_service import claim_global, free_claim_global
 from app.emulator.service.events_service import emit_position_if_needed
 from app.emulator.service.positions_service import maybe_emit_positions_snapshot_inmem
@@ -56,8 +58,7 @@ async def robot_tick(session, robot_id: str, tick_id: Optional[int] = None) -> N
         if robot.id not in SCANNING_UNTIL:
             now = datetime.now(timezone.utc)
             SCANNING_STARTED_AT[robot.id] = now
-            SCANNING_UNTIL[robot.id] = now  # немедленно готов к завершению (fast-loop обработает)
-        # если fast-loop выключен — watchdog завершаем здесь
+            SCANNING_UNTIL[robot.id] = now  # fast-loop добьёт
         start_at = SCANNING_STARTED_AT.get(robot.id)
         now_dt = datetime.now(timezone.utc)
         if start_at and (now_dt - start_at).total_seconds() * 1000.0 > SCAN_MAX_DURATION_MS:
@@ -89,7 +90,7 @@ async def robot_tick(session, robot_id: str, tick_id: Optional[int] = None) -> N
         return
 
     # 3) Поиск/поддержание цели
-    cur = robot_xy(robot)
+    cur_x, cur_y = robot_xy(robot)
     goal = TARGETS.get(robot.id)
 
     if float(robot.battery_level or 0.0) <= LOW_BATTERY_THRESHOLD:
@@ -102,33 +103,36 @@ async def robot_tick(session, robot_id: str, tick_id: Optional[int] = None) -> N
             still_ok = await cell_still_eligible(session, wid, goal, cutoff)
             if not still_ok:
                 await free_claim_global(wid, goal)
-                TARGETS.pop(robot.id, None); goal = None
+                TARGETS.pop(robot.id, None)
+                goal = None
+
         if goal is None:
-            if tid % IDLE_GOAL_LOOKUP_EVERY == 0:
-                if cache["cells"] is None:
-                    cache["cells"] = await eligible_cells(session, wid, cutoff)
-                cells = cache["cells"] or []
-                if cells:
-                    claimed_local = set()  # глобальная бронь через Redis; локальная кэш не используем
-                    local_sel: set[tuple[int, int]] = cache["local_selected"]
-                    best, best_d = None, None
-                    for c in cells:
-                        if c in local_sel:
-                            continue
-                        d = manhattan(cur, c)
-                        if best_d is None or d < best_d:
-                            best_d, best = d, c
-                    if best is not None:
-                        async with wh_lock(wid):
-                            cache_now = get_tick_cache(wid, tid)
-                            local_sel_now: set[tuple[int,int]] = cache_now["local_selected"]
-                            if best not in local_sel_now and await claim_global(wid, best):
-                                local_sel_now.add(best)
-                                TARGETS[robot.id] = best
-                                goal = best
+            # берём кандидатные клетки из кэша склада; если кэш не прогрет — top-K напрямую
+            cells_with_staleness = get_stale_cells_from_cache(wid)
+            if cells_with_staleness is None:
+                cells_with_staleness = await eligible_cells_with_staleness(session, wid, cutoff, top_k=200)
+
+            if cells_with_staleness:
+                # Выбираем аргмакс по (staleness, -distance)
+                best = None
+                best_key = None
+                for x, y, stale_sec in cells_with_staleness:
+                    if (x, y) in cache["local_selected"]:
+                        continue
+                    dist = abs(cur_x - x) + abs(cur_y - y)
+                    key = (stale_sec, -dist)
+                    if best_key is None or key > best_key:
+                        best_key = key
+                        best = (x, y)
+                if best is not None:
+                    async with wh_lock(wid):
+                        cache_now = get_tick_cache(wid, tid)
+                        if best not in cache_now["local_selected"] and await claim_global(wid, best):
+                            cache_now["local_selected"].add(best)
+                            TARGETS[robot.id] = best
+                            goal = best
 
     # 4) Шаг движения
-    cur_x, cur_y = cur
     if goal:
         tx, ty = goal
         nx, ny = cur_x, cur_y
@@ -140,13 +144,14 @@ async def robot_tick(session, robot_id: str, tick_id: Optional[int] = None) -> N
         cand = [(cur_x + 1, cur_y), (cur_x - 1, cur_y), (cur_x, cur_y + 1), (cur_x, cur_y - 1)]
         valid = [(x, y) for (x, y) in cand if 1 <= x and 0 <= y]  # простая валидация; clamp ниже
         nx, ny = random.choice(valid) if valid else (cur_x, cur_y)
+
     nx, ny = clamp_xy(nx, ny)
 
     moved = (nx, ny) != (cur_x, cur_y)
     if moved:
         robot.battery_level = max(0.0, float(robot.battery_level or 0.0) - BATTERY_DROP_PER_STEP)
 
-    # Разряжен — к доку
+    # 5) Разряжен — к доку
     if float(robot.battery_level or 0.0) <= 0.0:
         set_robot_xy(robot, DOCK_X, DOCK_Y)
         robot.status = "charging"
@@ -155,11 +160,13 @@ async def robot_tick(session, robot_id: str, tick_id: Optional[int] = None) -> N
         TARGETS.pop(robot.id, None)
         await session.flush()
         update_wh_snapshot_from_robot(robot)
+        from .scanning import _log_robot_status
         await _log_robot_status(session, robot, "charging")
         await emit_position_if_needed(robot)
         await maybe_emit_positions_snapshot_inmem(wid)
         return
 
+    # 6) Двигаемся/держим idle
     set_robot_xy(robot, nx, ny)
     robot.status = "idle"
     await session.flush()
@@ -167,23 +174,15 @@ async def robot_tick(session, robot_id: str, tick_id: Optional[int] = None) -> N
     await emit_position_if_needed(robot)
     await maybe_emit_positions_snapshot_inmem(wid)
 
-    if (nx, ny) == (DOCK_X, DOCK_Y) and float(robot.battery_level) < 100.0:
-        robot.status = "charging"
-        if goal and goal != (DOCK_X, DOCK_Y):
-            await free_claim_global(wid, goal)
-        TARGETS.pop(robot.id, None)
-        await session.flush()
-        update_wh_snapshot_from_robot(robot)
-        await maybe_emit_positions_snapshot_inmem(wid)
-        return
-
+    # 7) Прибытие к цели
     if goal and (nx, ny) == goal:
         key = (nx, ny)
-        if key not in cache["by_cell"]:
+        if key not in cache.get("by_cell", {}):
             cache["by_cell"][key] = await eligible_products_in_cell(session, wid, nx, ny, cutoff)
         eligible_now = cache["by_cell"][key]
         if eligible_now:
             await start_scan(robot, nx, ny)
+            from .scanning import _log_robot_status
             await _log_robot_status(session, robot, "scanning")
         else:
             await free_claim_global(wid, goal)

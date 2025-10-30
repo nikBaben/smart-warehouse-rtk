@@ -88,3 +88,21 @@ def should_emit_position(robot) -> bool:
         return False
     LAST_POS_SENT_AT[robot.id] = now
     return True
+
+# --- кэш "самых протухших" клеток по складу ---
+# wid -> {"data": list[tuple[int,int,float]], "until": float}
+STALE_CELLS_CACHE: Dict[str, dict] = {}
+
+def get_stale_cells_from_cache(wid: str):
+    rec = STALE_CELLS_CACHE.get(wid)
+    if not rec:
+        return None
+    if asyncio.get_running_loop().time() <= rec.get("until", 0.0):
+        return rec.get("data")
+    return None
+
+def put_stale_cells_to_cache(wid: str, data, ttl_sec: float = 1.0):
+    STALE_CELLS_CACHE[wid] = {
+        "data": data,
+        "until": asyncio.get_running_loop().time() + ttl_sec
+    }

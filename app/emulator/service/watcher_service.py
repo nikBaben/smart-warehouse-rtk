@@ -1,20 +1,19 @@
 from __future__ import annotations
 import asyncio, os, signal
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Set, List
 from sqlalchemy import select, func
 
 from app.db.session import async_session as AppSession
 from app.models.warehouse import Warehouse
 from app.models.robot import Robot
-from app.emulator.service.scheduler_service import select_robot_batch
 from app.emulator.config import (
-    TICK_INTERVAL, EMIT_AUTOSEND_INIT, ROBOTS_CONCURRENCY,
+    TICK_INTERVAL, EMIT_AUTOSEND_INIT, ROBOTS_CONCURRENCY, RESCAN_COOLDOWN
 )
 from app.emulator.service.state_service import (
     wh_snapshot, WH_SNAPSHOT, WH_SNAPSHOT_VER, WH_LAST_SENT_VER, WH_LAST_SENT_MAP,
     LAST_POS_BROADCAST_AT, LAST_ANY_SENT_AT, ELIGIBLE_CACHE, WH_TICK_COUNTER,
-    WH_ROBOT_OFFSET, wh_lock
+    WH_ROBOT_OFFSET, wh_lock, put_stale_cells_to_cache
 )
 from app.emulator.service.fast_scan_service import fast_scan_loop
 from app.emulator.service.broadcaster_service import ensure_positions_broadcaster_started, stop_positions_broadcaster
@@ -23,6 +22,8 @@ from app.emulator.service.positions_service import emit_positions_snapshot_force
 from app.emulator.service.events_service import emit, emit_position_if_needed
 from app.emulator.service.scanning_service import emit_product_scan_on_connect
 from app.emulator.service.tick_service import robot_tick
+from app.emulator.service.eligibility_service import eligible_cells_with_staleness
+from app.emulator.service.scheduler_service import select_robot_batch
 
 _FAST_TASKS = {}
 
@@ -62,8 +63,16 @@ async def _run_warehouse(warehouse_id: str, shard_idx: int, shard_count: int) ->
                         if EMIT_AUTOSEND_INIT:
                             await emit_product_scan_on_connect(warehouse_id)
 
+                # Синхронизация состава
                 async with AppSession() as s:
                     await warmup_or_sync_snapshot(s, warehouse_id, all_robot_ids)
+
+                # === НОВОЕ: один раз на цикл склада пересчитываем самые "протухшие" клетки и кладём в кэш (TTL ~1.5s)
+                cutoff = datetime.now(timezone.utc) - RESCAN_COOLDOWN
+                async with AppSession() as s:
+                    cells_stale = await eligible_cells_with_staleness(s, warehouse_id, cutoff, top_k=200)
+                put_stale_cells_to_cache(warehouse_id, cells_stale, ttl_sec=1.5)
+                # ===========================================================
 
                 robot_ids = select_robot_batch(warehouse_id, all_robot_ids)
                 tid = tick + 1
