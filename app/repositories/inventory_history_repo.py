@@ -48,7 +48,7 @@ class InventoryHistoryRepository:
         sort_order: str,
         page: int,
         page_size: int
-    ) -> List[InventoryHistory]:
+    ) -> Tuple[List[InventoryHistory], int]:
         query = select(InventoryHistory).filter(
             InventoryHistory.warehouse_id == warehouse_id
         )
@@ -118,7 +118,9 @@ class InventoryHistoryRepository:
         query = query.offset(offset).limit(page_size)
 
         result = await self.session.execute(query)
-        return list(result.scalars().all())
+        item = list(result.scalars().all())
+
+        return (item, len(item))
     
     async def inventory_history_export_to_xl(
         self,

@@ -43,7 +43,7 @@ class InventoryHistoryService:
         sort_order: str,
         page: int,
         page_size: int
-    ) -> List[InventoryHistory]:
+    ) -> Tuple[List[InventoryHistory], int]:
 
         inventory_history = await self.repo.get_filtered_inventory_history(
             warehouse_id=warehouse_id,
