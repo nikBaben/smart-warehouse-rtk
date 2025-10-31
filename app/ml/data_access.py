@@ -8,7 +8,8 @@ from sqlalchemy import select
 from app.db.session import async_session
 from app.models.inventory_history import InventoryHistory
 from app.models.shipment import ShipmentItems
-from app.models.delivery import DeliveryItems, ScheduledDelivery
+from app.models.delivery import ScheduledDelivery
+from app.models.delivery_items import DeliveryItems
 
 __all__ = [
     "fetch_snapshot_at",
