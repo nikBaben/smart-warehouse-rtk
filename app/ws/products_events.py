@@ -18,19 +18,27 @@ except Exception:
     manager = None  # type: ignore
 
 
+from datetime import datetime
+
 def _pack_product(p: Product) -> dict:
-    created_at = getattr(p, "created_at", None)
+    scanned_at = getattr(p, "scanned_at", None)
     shelf_value = getattr(p, "current_shelf", None)
+    last_update = getattr(p, "last_update", None)
 
     # 🔤 Преобразуем букву в номер по алфавиту
     if isinstance(shelf_value, str) and len(shelf_value) == 1 and shelf_value.isalpha():
         current_shelf = ord(shelf_value.upper()) - ord("A") + 1
     else:
-        # если там уже число или None — просто обрабатываем
         try:
             current_shelf = int(shelf_value)
         except (TypeError, ValueError):
             current_shelf = 0
+
+    # 🕒 Разница во времени в минутах с последнего обновления
+    if isinstance(last_update, datetime):
+        minutes_since_update = int((datetime.now() - last_update).total_seconds() / 60)
+    else:
+        minutes_since_update = None  # если даты нет
 
     return {
         "id": p.id,
@@ -40,12 +48,13 @@ def _pack_product(p: Product) -> dict:
         "current_zone": getattr(p, "current_zone", None),
         "status": p.status,
         "current_row": getattr(p, "current_row", 0),
-        "current_shelf": current_shelf,  # ✅ теперь всегда число
+        "current_shelf": current_shelf,
         "stock": getattr(p, "stock", None),
         "min_stock": getattr(p, "min_stock", None),
         "optimal_stock": getattr(p, "optimal_stock", None),
-        "created_at": created_at.isoformat() if created_at else None,
+        "created_at": minutes_since_update,  # ⏱ минуты с момента последнего сканирования
     }
+
 
 
 

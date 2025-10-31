@@ -118,6 +118,34 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+      
+  scheduler:
+    build: .
+    container_name: myapp-scheduler
+    working_dir: /app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/myapp
+      SQLALCHEMY_DISABLE_CEXT: "1"
+      # как часто запускать джоб (секунды). По умолчанию 600 (=10 минут)
+      SCHEDULER_INTERVAL_SEC: "600"
+      # сколько заказывать единиц на строку отгрузки (по умолчанию 1)
+      SHIPMENT_ITEM_QTY: "1"
+      # суффикс имени отправки (для наглядности)
+      SHIPMENT_NAME_PREFIX: "Auto shipment"
+      # статус новой отправки (если у вас Enum — см. app.models.enums.ShipmentStatus)
+      SHIPMENT_STATUS: "scheduled"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m app.scheduler.main
+    volumes:
+      - ./:/app
+
 
   # --- База данных для Keycloak ---
   keycloak-db:

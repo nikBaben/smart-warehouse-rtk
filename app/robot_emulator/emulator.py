@@ -65,7 +65,7 @@ USE_REDIS_COORD = os.getenv("USE_REDIS_COORD", "1") == "1"   # единый robo
 USE_REDIS_CLAIMS = os.getenv("USE_REDIS_CLAIMS", "1") == "1" # глобальная бронь ячеек
 REDIS_URL = os.getenv("REDIS_URL", "redis://myapp-redis:6379/0")
 CLAIM_TTL_MS = int(os.getenv("CLAIM_TTL_MS", "120000"))
-COORDINATOR_SHARD_INDEX = int(os.getenv("COORDINATOR_SHARD_INDEX", "1"))
+COORDINATOR_SHARD_INDEX = int(os.getenv("COORDINATOR_SHARD_INDEX", "0"))
 
 # =========================
 # 6) Simulation constants

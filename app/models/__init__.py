@@ -6,3 +6,5 @@ from .user import User
 from .keycloak_user import KeycloakUser
 from .robot_history import RobotHistory
 from .alarm import Alarm
+from .shipment import Shipment, ShipmentItems
+from .enums import  DeliveryStatus, ShipmentStatus

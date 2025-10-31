@@ -35,6 +35,11 @@ class Warehouse(Base):
         cascade="save-update, merge",
         passive_deletes=True,
     )
+    
+    shipments: Mapped[list["Shipment"]] = relationship(
+        back_populates="warehouse",
+        cascade="all, delete-orphan"
+    )
 
     inventory_history: Mapped[List["InventoryHistory"]] = relationship(  # type: ignore
         back_populates="warehouse",
