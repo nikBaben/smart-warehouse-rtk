@@ -1,6 +1,6 @@
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, cast, Date, or_, distinct
+from sqlalchemy import select, cast, Date, or_, distinct, func
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
@@ -115,12 +115,16 @@ class InventoryHistoryRepository:
     
         # Пагинация
         offset = (page - 1) * page_size
+        count_query = query.with_only_columns(func.count()).order_by(None)
+        total_count = await self.session.scalar(count_query)
+
+
+
         query = query.offset(offset).limit(page_size)
 
         result = await self.session.execute(query)
         item = list(result.scalars().all())
-
-        return (item, len(item))
+        return (item, total_count)
     
     async def inventory_history_export_to_xl(
         self,
