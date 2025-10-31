@@ -1,6 +1,6 @@
 from typing import List
 from app.repositories.operations_repo import OperationsRepository
-from app.schemas.operations import AllOperationsResponse, DeliveryShortResponse, ShipmentShortResponse
+from app.schemas.supplies import AllOperationsResponse, DeliveryShortResponse, ShipmentShortResponse
 from app.models.delivery import Delivery
 from app.models.shipment import Shipment
 
@@ -9,9 +9,9 @@ class OperationsService:
     def __init__(self, repo: OperationsRepository):
         self.repo = repo
 
-    async def get_all_operations(self) -> AllOperationsResponse:
-        """Получить все поставки и отгрузки"""
-        deliveries, shipments = await self.repo.get_all_operations()
+    async def get_all_operations_by_warehouse(self, warehouse_id: str) -> AllOperationsResponse:
+        """Получить все поставки и отгрузки для конкретного склада"""
+        deliveries, shipments = await self.repo.get_all_operations_by_warehouse(warehouse_id)
         
         # Преобразуем модели в схемы ответа
         delivery_responses = [
@@ -45,9 +45,9 @@ class OperationsService:
             shipments=shipment_responses
         )
 
-    async def get_all_deliveries(self) -> List[DeliveryShortResponse]:
-        """Получить только поставки"""
-        deliveries = await self.repo.get_all_deliveries()
+    async def get_all_deliveries_by_warehouse(self, warehouse_id: str) -> List[DeliveryShortResponse]:
+        """Получить только поставки для конкретного склада"""
+        deliveries = await self.repo.get_all_deliveries_by_warehouse(warehouse_id)
         return [
             DeliveryShortResponse(
                 id=delivery.id,
@@ -61,9 +61,9 @@ class OperationsService:
             for delivery in deliveries
         ]
 
-    async def get_all_shipments(self) -> List[ShipmentShortResponse]:
-        """Получить только отгрузки"""
-        shipments = await self.repo.get_all_shipments()
+    async def get_all_shipments_by_warehouse(self, warehouse_id: str) -> List[ShipmentShortResponse]:
+        """Получить только отгрузки для конкретного склада"""
+        shipments = await self.repo.get_all_shipments_by_warehouse(warehouse_id)
         return [
             ShipmentShortResponse(
                 id=shipment.id,

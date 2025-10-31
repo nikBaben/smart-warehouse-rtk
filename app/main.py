@@ -13,7 +13,7 @@ from app.api.routers import ws as ws_router
 from threading import Thread
 import asyncio
 from app.robot_emulator.emulator import run_robot_watcher 
-from app.ws.ws_manager import robot_events_broadcaster 
+from app.ws.ws_manager import WSManager 
 from app.ws.products_events import continuous_product_snapshot_streamer
 from app.ws.battery_events import continuous_robot_avg_streamer
 from app.ws.inventory_scans_streamer import continuous_inventory_scans_streamer
@@ -21,7 +21,7 @@ from app.ws.inventory_critical_streamer import continuous_inventory_critical_str
 from app.ws.inventory_status import continuous_inventory_status_avg_streamer
 from app.ws.robot_status_count_streamer import continuous_robot_status_count_streamer
 from app.ws.robot_activity_streamer import continuous_robot_activity_history_streamer
-from app.api.routers import operations
+from app.api.routers import supplies
 from app.api.routers import reports
 from app.events.bus import get_bus_for_current_loop, close_bus_for_current_loop
 from app.ws.redis_forwarder import start_redis_forwarder
@@ -41,7 +41,7 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 app.include_router(ws_router.router, prefix="/api") 
 
-app.include_router(operations.router)
+app.include_router(supplies.router)
 app.include_router(reports.router)
 
 # Держим ссылку на фон.таску форвардера, чтобы корректно её останавливать

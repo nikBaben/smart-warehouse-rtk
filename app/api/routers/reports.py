@@ -8,28 +8,22 @@ from app.api.deps import get_reports_service
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
-@router.post("/monthly-excel")
+@router.post("/supplies/monthly-excel")
 async def generate_monthly_excel_report(
     request: MonthlyReportRequest,
     reports_service: ReportsService = Depends(get_reports_service)
 ):
     """
-    Генерация Excel отчета по месяцам
-    
-    - Каждый лист - отдельный месяц
-    - Столбцы - дни месяца
-    - Строки - поставщики/заказчики
-    - ОТ (оранжевый) - отгрузки
-    - ДТ (желтый) - поставки
+    Генерация Excel отчета по поставкам и отгрузкам для конкретного склада
     """
     try:
         excel_data = await reports_service.generate_monthly_report(
             year=request.year,
+            warehouse_id=request.warehouse_id,
             months=request.months
         )
         
-        current_year = datetime.now().year
-        filename = f"operations_report_{request.year}.xlsx"
+        filename = f"supplies_report_{request.warehouse_id}_{request.year}.xlsx"
         
         return Response(
             content=excel_data,
@@ -41,16 +35,20 @@ async def generate_monthly_excel_report(
         raise HTTPException(status_code=500, detail=f"Ошибка генерации отчета: {str(e)}")
 
 
-@router.get("/monthly-excel/{year}")
+@router.get("/supplies/monthly-excel/{warehouse_id}/{year}")
 async def generate_monthly_excel_report_simple(
+    warehouse_id: str,
     year: int,
     reports_service: ReportsService = Depends(get_reports_service)
 ):
-    """Упрощенная версия - только год"""
+    """Упрощенная версия - склад и год"""
     try:
-        excel_data = await reports_service.generate_monthly_report(year=year)
+        excel_data = await reports_service.generate_monthly_report(
+            year=year, 
+            warehouse_id=warehouse_id
+        )
         
-        filename = f"operations_report_{year}.xlsx"
+        filename = f"supplies_report_{warehouse_id}_{year}.xlsx"
         
         return Response(
             content=excel_data,

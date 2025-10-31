@@ -14,11 +14,11 @@ class ReportsService:
     def __init__(self, repo: ReportsRepository):
         self.repo = repo
 
-    async def generate_monthly_report(self, year: int, months: List[int] = None) -> bytes:
-        """Генерация Excel отчета по месяцам"""
+    async def generate_monthly_report(self, year: int, warehouse_id: str, months: List[int] = None) -> bytes:
+        """Генерация Excel отчета по месяцам для конкретного склада"""
         
-        # Получаем все данные за год
-        deliveries, shipments = await self.repo.get_operations_by_year(year)
+        # Получаем все данные за год для конкретного склада
+        deliveries, shipments = await self.repo.get_operations_by_year_and_warehouse(year, warehouse_id)
         
         # Если месяцы не указаны - берем все от 1 до 12
         if months is None:
@@ -30,7 +30,7 @@ class ReportsService:
         wb.remove(wb.active)
         
         for month in months:
-            await self._create_month_sheet(wb, year, month, deliveries, shipments)
+            await self._create_month_sheet(wb, year, month, warehouse_id, deliveries, shipments)
         
         # Сохраняем в bytes
         buffer = io.BytesIO()
@@ -39,24 +39,24 @@ class ReportsService:
         
         return buffer.getvalue()
 
-    async def _create_month_sheet(self, wb: Workbook, year: int, month: int, 
+    async def _create_month_sheet(self, wb: Workbook, year: int, month: int, warehouse_id: str,
                                 deliveries: List[Delivery], shipments: List[Shipment]):
-        """Создать лист для конкретного месяца"""
+        """Создать лист для конкретного месяца и склада"""
         
         # Создаем лист с названием месяца
         month_name = self._get_month_name(month)
         ws = wb.create_sheet(title=month_name)
         
-        # Получаем операции за месяц
-        month_deliveries = [d for d in deliveries if d.scheduled_at.month == month]
-        month_shipments = [s for s in shipments if s.scheduled_at.month == month]
+        # Получаем операции за месяц для конкретного склада
+        month_deliveries = [d for d in deliveries if d.scheduled_at.month == month and d.warehouse_id == warehouse_id]
+        month_shipments = [s for s in shipments if s.scheduled_at.month == month and s.warehouse_id == warehouse_id]
         
         # Получаем уникальных поставщиков и дни месяца
         suppliers = self._get_unique_suppliers(month_deliveries, month_shipments)
         days_in_month = self._get_days_in_month(year, month)
         
         # Создаем заголовки
-        self._create_headers(ws, days_in_month)
+        self._create_headers(ws, days_in_month, warehouse_id)
         
         # Заполняем данные по поставщикам
         self._fill_supplier_data(ws, suppliers, days_in_month, month_deliveries, month_shipments)
@@ -100,11 +100,11 @@ class ReportsService:
         
         return list(range(1, last_day.day + 1))
 
-    def _create_headers(self, ws, days_in_month):
+    def _create_headers(self, ws, days_in_month, warehouse_id: str):
         """Создать заголовки таблицы"""
-        # Заголовок месяца
+        # Заголовок месяца и склада
         ws.merge_cells('A1:B1')
-        ws['A1'] = 'Поставщик/День'
+        ws['A1'] = f'Поставщик/День - Склад {warehouse_id}'
         ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
         
         # Заголовки дней
@@ -115,7 +115,7 @@ class ReportsService:
     def _fill_supplier_data(self, ws, suppliers, days_in_month, deliveries, shipments):
         """Заполнить данные по поставщикам"""
         
-        # Цвета для ячеек (обновленные)
+        # Цвета для ячеек
         delivery_fill = PatternFill(start_color='BB80FF', end_color='BB80FF', fill_type='solid')  # Фиолетовый для поставок
         shipment_fill = PatternFill(start_color='FFA789', end_color='FFA789', fill_type='solid')   # Оранжевый для отгрузок
         both_fill = PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid')       # Розовый для обоих

@@ -4,4 +4,5 @@ from typing import Optional
 
 class MonthlyReportRequest(BaseModel):
     year: int
-    months: Optional[list[int]] = None  # Если None - все месяцы года
+    warehouse_id: str
+    months: Optional[list[int]] = None
