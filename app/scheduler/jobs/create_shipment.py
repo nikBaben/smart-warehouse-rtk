@@ -94,7 +94,7 @@ def run(session: Session, cfg: Config) -> None:
                     id=str(uuid4()),
                     shipment_id=shipment_id,
                     product_id=p.id,
-                    warehouse_id=p.warehouse_id,
+                    warehouse_id=getattr(p, "warehouse_id", None),
                     ordered_quantity=ordered_qty,
                     fact_quantity=0,
                 )
