@@ -246,23 +246,80 @@ export function DataTableHistory<T extends { id: string }>(props: DataTableHisto
         </Table>
       </div>
 
-      {/* --- Пагинация --- */}
+      {/* --- Пагинация (правильная) --- */}
       <div className="flex justify-center items-center text-[12px] h-[43px] gap-[15px]">
         <div className="flex items-center gap-[4px]">
-          {[...Array(totalPages)].map((_, i) => (
-            <Button
-              key={i}
-              onClick={() => onPageChange(i + 1)}
-              className={cn(
-                "w-[18px] h-[18px] !p-0 min-w-[18px] min-h-[18px] rounded-[5px] text-[12px] font-light shadow-none",
-                page === i + 1
-                  ? "bg-[#F2F3F4] border-[#7700FF] border-[1px] text-black"
-                  : "bg-[#F2F3F4] hover:bg-[#E8E9EA]"
-              )}
-            >
-              {i + 1}
-            </Button>
-          ))}
+          {/* Кнопка Назад */}
+          <Button
+            onClick={() => onPageChange(Math.max(page - 1, 1))}
+            disabled={page === 1}
+            className={cn(
+              "bg-[#F2F3F4] w-[18px] h-[18px] rounded-[5px] shadow-none",
+              page === 1 && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            <ArrowRight className="w-[8px] h-[8px] rotate-180" fill="black" />
+          </Button>
+
+          {/* Основная логика пагинации */}
+          {(() => {
+            const visiblePages = 9;
+            const pages: (number | string)[] = [];
+
+            if (totalPages <= visiblePages) {
+              // Если страниц немного — показываем все
+              for (let i = 1; i <= totalPages; i++) pages.push(i);
+            } else {
+              const half = Math.floor(visiblePages / 2);
+              let start = page - half;
+              let end = page + half;
+
+              if (start < 1) {
+                start = 1;
+                end = visiblePages;
+              } else if (end > totalPages) {
+                end = totalPages;
+                start = totalPages - visiblePages + 1;
+              }
+
+              if (start > 1) {
+                pages.push(1);
+                if (start > 2) pages.push("...");
+              }
+
+              for (let i = start; i <= end; i++) {
+                pages.push(i);
+              }
+
+              if (end < totalPages) {
+                if (end < totalPages - 1) pages.push("...");
+                pages.push(totalPages);
+              }
+            }
+
+            return pages.map((p, i) =>
+              p === "..." ? (
+                <span key={`ellipsis-${i}`} className="px-1 text-gray-500 select-none">
+                  ...
+                </span>
+              ) : (
+                <Button
+                  key={`page-${p}`}
+                  onClick={() => onPageChange(Number(p))}
+                  className={cn(
+                    "w-[18px] h-[18px] !p-0 min-w-[18px] min-h-[18px] rounded-[5px] text-[12px] font-light shadow-none",
+                    page === p
+                      ? "bg-[#F2F3F4] border-[#7700FF] border-[1px] text-black"
+                      : "bg-[#F2F3F4] hover:bg-[#E8E9EA]"
+                  )}
+                >
+                  {p}
+                </Button>
+              )
+            );
+          })()}
+
+          {/* Кнопка Вперёд */}
           <Button
             onClick={() => onPageChange(Math.min(page + 1, totalPages))}
             disabled={page === totalPages}
@@ -275,6 +332,7 @@ export function DataTableHistory<T extends { id: string }>(props: DataTableHisto
           </Button>
         </div>
 
+        {/* Селект количества строк */}
         <Select
           value={String(rowsPerPage)}
           onValueChange={(value) => onRowsPerPageChange(Number(value))}
@@ -300,6 +358,7 @@ export function DataTableHistory<T extends { id: string }>(props: DataTableHisto
           </SelectContent>
         </Select>
       </div>
+
     </div>
   );
 }
