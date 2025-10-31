@@ -419,7 +419,7 @@ function ListPage() {
 	return (
 		<div className='flex bg-[#F4F4F5] min-h-screen'>
 			<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
-				<header className='bg-white justify-between flex items-center h-[60px] px-[14px] z-10'>
+				<header className='header-style'>
 					<span className='pagename-font'>Список складов</span>
 					<div className='flex items-center space-x-5'>
 						<AddWarehouseDialog />

@@ -9,6 +9,7 @@ import { Header } from '@/components/ui/header'
 import { Footer } from '@/components/ui/footer'
 import { toast } from 'sonner'
 import { useUserStore } from '@/store/useUserStore.tsx'
+import { Spinner } from '@/components/ui/spinner'
 
 /* type User = {
 	id: number,
@@ -76,7 +77,10 @@ function AuthPage() {
 			<main className='flex-1 flex flex-col items-center justify-center p-4 relative'>
 				<div className='flex flex-col gap-[20px]'>
 					<div className='w-[430px] h-[550px] bg-white rounded-[15px] overflow-hidden max-w-md p-8 flex flex-col items-center'>
-						<form className='w-full m-[20px] h-[68px] flex flex-col gap-[20px]' autoComplete='on'>
+						<form
+							className='w-full m-[20px] h-[68px] flex flex-col gap-[20px]'
+							autoComplete='on'
+						>
 							<h1 className='text-2xl font-bold flex flex-col items-center justify-center'>
 								Войти на склад
 							</h1>
@@ -123,16 +127,23 @@ function AuthPage() {
 							</div>
 							<div className='flex flex-col items-center justify-center'>
 								<Button
-									disabled={!email || !password || loading}
+									disabled={!email || !password}
 									type='button'
 									onClick={handleLogin}
-									className={`w-[365px] cursor-pointer h-[68px] rounded-[10px] text-[18px] leading-[24px] shadow-none ${
+									className={`${loading && 'button-loading'}
+									w-[365px] cursor-pointer h-[68px] rounded-[10px] text-[18px] leading-[24px] shadow-none ${
 										!email || !password
 											? 'bg-[#CECECE] text-[#FFFFFF] cursor-not-allowed'
 											: 'bg-[#7700FF] text-[#FFFFFF]'
 									}`}
 								>
-									{loading ? 'Загрузка...' : 'Войти'}
+									{loading ? (
+										<div className='spinner-load-container'>
+											<Spinner className='size-5 m-1' /> загрузка...
+										</div>
+									) : (
+										'Войти'
+									)}
 								</Button>
 							</div>
 							<div className='flex flex-col items-center justify-center'>

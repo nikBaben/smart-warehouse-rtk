@@ -55,7 +55,7 @@ function SuppliesPage() {
 	return (
 		<div className='flex bg-[#F4F4F5] min-h-screen'>
 			<div className='flex flex-col flex-1 overflow-hidden ml-[60px]'>
-				<header className='bg-white justify-between flex items-center h-[60px] px-[14px] z-10'>
+				<header className='header-style'>
 					<span className='pagename-font'>Поставки</span>
 					<div className='flex items-center space-x-5'>
 						{/* <AddWarehouseDialog /> */}
@@ -70,9 +70,7 @@ function SuppliesPage() {
 						</section>
 
 						<section className='bg-white rounded-[15px] col-span-6 h-full p-[10px] space-y-5'>
-							<h2 className='big-section-font'>
-								Отгрузки
-							</h2>
+							<h2 className='big-section-font'>Отгрузки</h2>
 						</section>
 					</div>
 				</main>

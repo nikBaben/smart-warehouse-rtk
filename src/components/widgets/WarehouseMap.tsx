@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import AddLarge from '@atomaro/icons/24/action/AddLarge'
 import RemoveLarge from '@atomaro/icons/24/action/RemoveLarge'
 import Aim from '@atomaro/icons/24/communication/Aim'
+import { ButtonGroup } from '@/components/ui/button-group'
 import {
   TooltipProvider,
 	Tooltip,
@@ -228,7 +229,7 @@ export function WarehouseMap() {
 								width={cellWidth}
 								height={cellHeight}
 								fill={getProductStatusColor(item.status)}
-								opacity={0.6}
+								opacity={1}
 								stroke='#ffffff'
 								rx={2}
 							/>
@@ -256,9 +257,9 @@ export function WarehouseMap() {
 											/>
 											<text
 												className='select-none'
-												x={-Math.min(cellWidth, cellHeight) * 0.2}
-												y={Math.min(cellWidth, cellHeight) * 0.2}
-												fontSize={Math.min(cellWidth, cellHeight) * 0.6}
+												textAnchor='middle'
+												dominantBaseline='middle'
+												fontSize={Math.min(cellWidth, cellHeight) * 0.5}
 												fill='white'
 												fontWeight='bold'
 											>
@@ -289,16 +290,49 @@ export function WarehouseMap() {
 					</g>
 				</motion.g>
 			</svg>
-			<div className='absolute bottom-4 right-4 flex gap-2'>
-				<Button onClick={zoomIn} size='icon' className='map-button'>
-					<AddLarge className='map-button-icon' fill='#585D69' />
+			<div className='absolute bottom-4 right-4 flex flex-col gap-2'>
+				<Button
+					onClick={centerMap}
+					size='icon'
+					title='Центрировать'
+					aria-label='Центрировать'
+					className='map-button group'
+				>
+					<Aim
+						className='map-button-icon group-hover:fill-black'
+						fill='#585D69'
+					/>
 				</Button>
-				<Button onClick={zoomOut} size='icon' className='map-button'>
-					<RemoveLarge className='map-button-icon' fill='#585D69' />
-				</Button>
-				<Button onClick={centerMap} size='icon' className='map-button'>
-					<Aim className='map-button-icon' fill='#585D69' />
-				</Button>
+				<ButtonGroup
+					orientation='vertical'
+					aria-label='Media controls'
+					className='h-fit'
+				>
+					<Button
+						onClick={zoomIn}
+						size='icon'
+						title='Приблизить'
+						aria-label='Приблизить'
+						className='map-button group'
+					>
+						<AddLarge
+							className='map-button-icon group-hover:fill-black'
+							fill='#585D69'
+						/>
+					</Button>
+					<Button
+						onClick={zoomOut}
+						size='icon'
+						title='Отдалить'
+						aria-label='Отдалить'
+						className='map-button group'
+					>
+						<RemoveLarge
+							className='map-button-icon group-hover:fill-black'
+							fill='#585D69'
+						/>
+					</Button>
+				</ButtonGroup>
 			</div>
 		</div>
 	)

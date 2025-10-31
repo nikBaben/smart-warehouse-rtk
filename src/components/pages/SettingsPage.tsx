@@ -100,10 +100,10 @@ function SettingsPage(){
   return (
 		<div className='flex bg-[#F4F4F5] min-h-screen'>
 			<div className='flex flex-col flex-1 ml-[60px]'>
-				<header className='bg-white h-[60px] w-full flex items-center px-[74px] fixed top-0 left-0 z-10'>
+				<header className='header-style'>
 					<span className='page-name'>Параметры и уведомления</span>
 				</header>
-				<main className='flex-1 pt-[70px] pl-[10px] pr-[10px] pb-[10px]'>
+				<main className='flex-1 p-[9px]'>
 					<div className='grid grid-cols-12 gap-3 justify-between'>
 						<section className='flex flex-col col-span-6 gap-[10px]'>
 							<div className='bg-white rounded-[15px] p-[10px] h-[70px] flex justify-between'>
@@ -220,7 +220,7 @@ function SettingsPage(){
 								<img
 									src='/src/assets/images/warehouse-img 1.svg'
 									alt='Warehouse'
-									className='w-[507px] h-[338px]'
+									className='w-[480px] h-[320px]'
 								/>
 							</div>
 						</section>

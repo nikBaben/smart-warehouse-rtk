@@ -6,9 +6,11 @@ import History from '@atomaro/icons/24/communication/History';
 import MenuPlusBullets from "@atomaro/icons/24/navigation/MenuPlusBullets";
 import Settings from '@atomaro/icons/24/action/Settings';
 import DeliveryBox from '@atomaro/icons/24/business/DeliveryBox'
-import BarCode from '@atomaro/icons/24/action/BarCode'
+import InformationStroke from '@atomaro/icons/24/alert/InformationStroke'
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ExitDialogue } from "./ExitDialogue";
+import { InfoIcon } from "lucide-react";
+
 
 export function Navbar() {
 	const [showExit, setShowExit] = useState(false);
@@ -30,15 +32,16 @@ export function Navbar() {
 				<div className='flex flex-col items-center w-[30px] h-[300px] justify-center gap-[30px]'>
 					<nav className='flex flex-col gap-[30px] items-center'>
 						<NavItem icon={Home} label='Главная' to='/' />
+						<NavItem icon={MenuPlusBullets} label='Список складов' to='/list' />
 						<NavItem icon={History} label='История' to='/history' />
 						<NavItem icon={DeliveryBox} label='Поставки' to='/supplies' />
-						<NavItem icon={MenuPlusBullets} label='Меню' to='/list' />
 						<UploadCSV />
 					</nav>
 				</div>
 
 				<div className='flex flex-col items-center absolute bottom-[20.15px] w-[30px]'>
 					<nav className='flex gap-[26px] flex-col items-center'>
+						<NavItem icon={InformationStroke} label='Информация' to='/info' />
 						<NavItem icon={Settings} label='Настройки' to='/settings' />
 						<ExitDialogue />
 					</nav>

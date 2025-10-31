@@ -186,7 +186,7 @@ function HistoryPage(){
     return (
         <div className="flex bg-[#F4F4F5] min-h-screen">
             <div className="flex flex-col flex-1 overflow-hidden ml-[60px]">
-                <header className='bg-white justify-between flex items-center h-[60px] px-[14px] z-10'>
+                <header className='header-style'>
                     <span className='pagename-font'>Исторические данные</span>
                     <div className='flex items-center space-x-5'>
                         <div className='relative'>

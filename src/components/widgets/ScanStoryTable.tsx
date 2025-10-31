@@ -124,7 +124,12 @@ export function ScanStoryTable() {
 
 	return (
 		<div className='overflow-hidden rounded-[10px] bg-[#FFFFFF]'>
-			<div className='overflow-y-auto max-h-[198px]'>
+			<div
+				className={cn(
+					'max-h-[196px] scroll-padding',
+					tableData.length > 0 ? 'overflow-y-auto' : 'overflow-hidden'
+				)}
+			>
 				<Table className='border-separate border-spacing-y-[5px] border-0 [&_*]:border-0 w-full !text-center'>
 					<TableHeader className='text-[10px]'>
 						<TableRow className='bg-[#FFFFFF] text-black'>

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { ReadyState } from 'react-use-websocket'
 
 type RobotAvgBattery = {
   type: 'robot.avg_battery'
@@ -121,18 +122,21 @@ interface SocketState {
 	productScan?: ProductScan
 	robotPositions?: RobotPositions
 	productSnapshot?: ProductSnapshot
+	connectionState: ReadyState
 	updateData: (msg: SocketMessage) => void
+	resetData: () => void
+	setConnectionState: (state: ReadyState) => void
 }
 
 export const useSocketStore = create<SocketState>(set => ({
 	avgBattery: undefined,
-	statusCount: undefined,
 	scanned24h: undefined,
 	criticalUnique: undefined,
 	statusAvg: undefined,
 	activitySeries: undefined,
 	productScan: undefined,
-	lastUpdate: undefined,
+	connectionState: ReadyState.CLOSED,
+	setConnectionState: state => set({ connectionState: state }),
 
 	updateData: msg => {
 		switch (msg.type) {
@@ -152,24 +156,37 @@ export const useSocketStore = create<SocketState>(set => ({
 				set({ statusAvg: msg })
 				break
 			case 'robot.activity_series':
-				set(state=>{
-					if(JSON.stringify(state.activitySeries?.series) === JSON.stringify(msg.series)){
-      			return {} // ничего не меняем, чтобы не триггерить ререндер
-    			}
-    			return { activitySeries: msg } // заменяем полностью
+				set(state => {
+					if (
+						JSON.stringify(state.activitySeries?.series) ===
+						JSON.stringify(msg.series)
+					) {
+						return {} // ничего не меняем, чтобы не триггерить ререндер
+					}
+					return { activitySeries: msg } // заменяем полностью
 				})
 				break
 			case 'product.scan':
 				set({ productScan: msg })
 				break
 			case 'robot.positions':
-				set({robotPositions: msg})
+				set({ robotPositions: msg })
 				break
 			case 'product.snapshot':
-				set({productSnapshot: msg})
+				set({ productSnapshot: msg })
 				break
 			default:
 				console.warn('⚠️ Неизвестный тип сообщения:', msg)
 		}
+	},
+	resetData: () => {
+		set({
+			avgBattery: undefined,
+			scanned24h: undefined,
+			criticalUnique: undefined,
+			statusAvg: undefined,
+			activitySeries: undefined,
+			productScan: undefined,
+		})
 	},
 }))
