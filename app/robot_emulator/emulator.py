@@ -65,7 +65,7 @@ USE_REDIS_COORD = os.getenv("USE_REDIS_COORD", "1") == "1"   # единый robo
 USE_REDIS_CLAIMS = os.getenv("USE_REDIS_CLAIMS", "1") == "1" # глобальная бронь ячеек
 REDIS_URL = os.getenv("REDIS_URL", "redis://myapp-redis:6379/0")
 CLAIM_TTL_MS = int(os.getenv("CLAIM_TTL_MS", "120000"))
-COORDINATOR_SHARD_INDEX = int(os.getenv("COORDINATOR_SHARD_INDEX", "0"))
+COORDINATOR_SHARD_INDEX = int(os.getenv("COORDINATOR_SHARD_INDEX", "1"))
 
 # =========================
 # 6) Simulation constants
@@ -76,13 +76,15 @@ DOCK_X, DOCK_Y = 0, 0
 
 TICK_INTERVAL = float(os.getenv("ROBOT_TICK_INTERVAL", "0.5"))
 SCAN_DURATION = timedelta(seconds=int(os.getenv("SCAN_DURATION_SEC", "6")))
-RESCAN_COOLDOWN = timedelta(seconds=int(os.getenv("RESCAN_COOLDOWN_SEC", "120")))
+RESCAN_COOLDOWN = timedelta(seconds=int(os.getenv("RESCAN_COOLDOWN_SEC", "600")))
 CHARGE_DURATION = timedelta(seconds=int(os.getenv("CHARGE_DURATION_SEC", "45")))
 LOW_BATTERY_THRESHOLD = float(os.getenv("LOW_BATTERY_THRESHOLD", "15"))
 
 BATTERY_DROP_PER_STEP = float(os.getenv("BATTERY_DROP_PER_STEP", "0.6"))
 POSITION_RATE_LIMIT_PER_ROBOT = float(os.getenv("POSITION_RATE_LIMIT_SEC", "0.25"))
 ROBOTS_CONCURRENCY = int(os.getenv("ROBOT_CONCURRENCY", "12"))
+# Сколько процентов батареи списывать за 1 секунду сканирования
+SCAN_BATTERY_DROP_PER_SEC = float(os.getenv("SCAN_BATTERY_DROP_PER_SEC", "0.08"))
 
 POSITIONS_MIN_INTERVAL_MS = int(os.getenv("POSITIONS_MIN_INTERVAL_MS", "75"))
 POSITIONS_KEEPALIVE_MS = int(os.getenv("POSITIONS_KEEPALIVE_MS", "1000"))
@@ -91,7 +93,7 @@ POSITIONS_DIFFS = os.getenv("POSITIONS_DIFFS", "0") == "1"
 SEND_ROBOT_POSITION = os.getenv("SEND_ROBOT_POSITION", "1") == "0"
 
 IDLE_GOAL_LOOKUP_EVERY = int(os.getenv("IDLE_GOAL_LOOKUP_EVERY", "2"))
-ROBOTS_PER_TICK = int(os.getenv("ROBOTS_PER_TICK", "256"))
+ROBOTS_PER_TICK = int(os.getenv("ROBOTS_PER_TICK", "1024"))
 
 FAST_SCAN_LOOP = os.getenv("FAST_SCAN_LOOP", "1") == "1"
 FAST_SCAN_INTERVAL_MS = int(os.getenv("FAST_SCAN_INTERVAL_MS", "75"))
@@ -188,6 +190,9 @@ _SCANNING_FINISHING: Dict[str, bool] = {}
 _SCAN_LOCKS: Dict[str, asyncio.Lock] = {}
 
 _LAST_SCANS_CACHE: Dict[str, deque] = {}
+
+# Во время сканирования: отметка последнего списания батареи
+_SCANNING_BATT_LAST_AT: Dict[str, datetime] = {}
 
 # ===== Shard
 _SHARD_IDX = 0
@@ -552,6 +557,32 @@ async def _emit_product_scans_init(warehouse_id: str) -> None:
             await _emit_last_scans(s, warehouse_id, robot_id=None, reason="autosend_init")
 
 # =========================
+# 14a) Battery drain helpers (scan)
+# =========================
+def _drain_scan_battery(robot: Robot, now: datetime) -> bool:
+    """
+    Уменьшает батарею во время сканирования пропорционально прошедшему времени.
+    Возвращает True, если заряд действительно изменился.
+    """
+    rid = robot.id
+    last = _SCANNING_BATT_LAST_AT.get(rid)
+    if last is None:
+        _SCANNING_BATT_LAST_AT[rid] = now
+        return False
+    dt = (now - last).total_seconds()
+    if dt <= 0:
+        return False
+    drop = SCAN_BATTERY_DROP_PER_SEC * dt
+    cur = float(robot.battery_level or 0.0)
+    new = max(0.0, cur - drop)
+    if new == cur:
+        _SCANNING_BATT_LAST_AT[rid] = now
+        return False
+    robot.battery_level = new
+    _SCANNING_BATT_LAST_AT[rid] = now
+    return True
+
+# =========================
 # 15) Redis claims (global)
 # =========================
 async def _claim_global(wid: str, cell: Tuple[int, int]) -> bool:
@@ -722,12 +753,14 @@ async def _start_scan(session: AsyncSession, robot: Robot, x: int, y: int) -> No
     now = datetime.now(timezone.utc)
     _SCANNING_STARTED_AT[robot.id] = now
     _SCANNING_UNTIL[robot.id] = now + SCAN_DURATION
+    _SCANNING_BATT_LAST_AT[robot.id] = now
     _update_wh_snapshot_from_robot(robot)
 
 async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
     rx, ry = _SCANNING_CELL.pop(robot.id, robot_xy(robot))
     _SCANNING_UNTIL.pop(robot.id, None)
     _SCANNING_STARTED_AT.pop(robot.id, None)
+    _SCANNING_BATT_LAST_AT.pop(robot.id, None)
 
     shelf = shelf_num_to_str(rx)
     if shelf == "0":
@@ -814,6 +847,7 @@ async def _safe_finish_scan(session: AsyncSession, robot: Robot) -> None:
         _SCANNING_CELL.pop(robot.id, None)
         _SCANNING_UNTIL.pop(robot.id, None)
         _SCANNING_STARTED_AT.pop(robot.id, None)
+        _SCANNING_BATT_LAST_AT.pop(robot.id, None)
         await _free_claim_global(robot.warehouse_id, (rx, ry))
         await set_status(session, robot, "idle")
         try:
@@ -824,6 +858,7 @@ async def _safe_finish_scan(session: AsyncSession, robot: Robot) -> None:
     finally:
         async with _scan_lock(robot.id):
             _SCANNING_FINISHING.pop(robot.id, None)
+            _SCANNING_BATT_LAST_AT.pop(robot.id, None)
 
 # =========================
 # 18) Eligibility quick check
@@ -893,6 +928,13 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
             _SCANNING_STARTED_AT[robot.id] = now_dt
             _SCANNING_UNTIL[robot.id] = now_dt
             _SCANNING_CELL.setdefault(robot.id, robot_xy(robot))
+        # Списываем батарею во время сканирования и обновляем снапшот,
+        # чтобы robot.positions отражал текущий уровень заряда.
+        if _drain_scan_battery(robot, now_dt):
+            await session.flush()
+            _update_wh_snapshot_from_robot(robot)
+            await _maybe_emit_positions_snapshot_inmem(wid)
+            await _emit_position_if_needed(robot)
         if FAST_SCAN_LOOP:
             return
         start_at = _SCANNING_STARTED_AT.get(robot.id)
@@ -944,7 +986,7 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
             if cache["goals_queue"] is None:
                 # 1) Try Redis ZSET oldest cells (zero-alloc-ish)
                 oldest = await _zrange_oldest_cells(wid, limit=256) or []
-                # Convert to list of (x,y)
+                # Convert to list of (x, y)
                 oldest_cells = [(x, y) for (x, y, _score) in oldest]
                 # Filter by cutoff in ONE SQL (cap to 64 for speed)
                 if oldest_cells:
@@ -954,7 +996,7 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
                     # Fallback single SQL (rare)
                     eligible = await _eligible_cells(session, wid, cutoff)
 
-                # Stable order: oldest first; tie-breaker: per robot we will prefer nearest later.
+                # Stable order: oldest first; tie-breaker: per robot мы предпочтем ближайшие позже.
                 cache["goals_queue"] = eligible
 
             # Try to take the best goal from queue considering claims & distance (tie-breaker)
