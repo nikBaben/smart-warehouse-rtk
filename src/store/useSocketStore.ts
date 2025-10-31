@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { ReadyState } from 'react-use-websocket'
+import { subscribeWithSelector } from 'zustand/middleware'
 
 type RobotAvgBattery = {
   type: 'robot.avg_battery'
@@ -128,65 +129,69 @@ interface SocketState {
 	setConnectionState: (state: ReadyState) => void
 }
 
-export const useSocketStore = create<SocketState>(set => ({
-	avgBattery: undefined,
-	scanned24h: undefined,
-	criticalUnique: undefined,
-	statusAvg: undefined,
-	activitySeries: undefined,
-	productScan: undefined,
-	connectionState: ReadyState.CLOSED,
-	setConnectionState: state => set({ connectionState: state }),
+export const useSocketStore = create(
+	subscribeWithSelector<SocketState>(set => ({
+		avgBattery: undefined,
+		robotsData: undefined,
+		scanned24h: undefined,
+		criticalUnique: undefined,
+		statusAvg: undefined,
+		activitySeries: undefined,
+		productScan: undefined,
+		connectionState: ReadyState.CLOSED,
+		setConnectionState: state => set({ connectionState: state }),
 
-	updateData: msg => {
-		switch (msg.type) {
-			case 'robot.avg_battery':
-				set({ avgBattery: msg })
-				break
-			case 'robot.active_robots':
-				set({ robotsData: msg })
-				break
-			case 'inventory.scanned_24h':
-				set({ scanned24h: msg })
-				break
-			case 'inventory.critical_unique':
-				set({ criticalUnique: msg })
-				break
-			case 'inventory.status_avg':
-				set({ statusAvg: msg })
-				break
-			case 'robot.activity_series':
-				set(state => {
-					if (
-						JSON.stringify(state.activitySeries?.series) ===
-						JSON.stringify(msg.series)
-					) {
-						return {} // ничего не меняем, чтобы не триггерить ререндер
-					}
-					return { activitySeries: msg } // заменяем полностью
-				})
-				break
-			case 'product.scan':
-				set({ productScan: msg })
-				break
-			case 'robot.positions':
-				set({ robotPositions: msg })
-				break
-			case 'product.snapshot':
-				set({ productSnapshot: msg })
-				break
-			default:
-				console.warn('⚠️ Неизвестный тип сообщения:', msg)
-		}
-	},
-	resetData: () => {
-		set({
-			avgBattery: undefined,
-			scanned24h: undefined,
-			criticalUnique: undefined,
-			statusAvg: undefined,
-			activitySeries: undefined,
-			productScan: undefined,
-		})
-	},
-}))
+		updateData: msg => {
+			switch (msg.type) {
+				case 'robot.avg_battery':
+					set({ avgBattery: msg });
+					break
+				case 'robot.active_robots':
+					set({ robotsData: msg });
+					break
+				case 'inventory.scanned_24h':
+					set({ scanned24h: msg });
+					break
+				case 'inventory.critical_unique':
+					set({ criticalUnique: msg });
+					break
+				case 'inventory.status_avg':
+					set({ statusAvg: msg });
+					break
+				case 'robot.activity_series':
+					set(state => {
+						if (
+							JSON.stringify(state.activitySeries?.series) ===
+							JSON.stringify(msg.series)
+						) {
+							return {} // ничего не меняем, чтобы не вызавать ререндер
+						}
+						return { activitySeries: msg } // заменяем полностью
+					})
+					break
+				case 'product.scan':
+					set({ productScan: msg });
+					break
+				case 'robot.positions':
+					set({ robotPositions: msg });
+					break
+				case 'product.snapshot':
+					set({ productSnapshot: msg });
+					break
+				default:
+					console.warn('⚠️ Неизвестный тип сообщения:', msg)
+			}
+		},
+		resetData: () => {
+			set({
+				avgBattery: undefined,
+				robotsData: undefined,
+				scanned24h: undefined,
+				criticalUnique: undefined,
+				statusAvg: undefined,
+				activitySeries: undefined,
+				productScan: undefined,
+			})
+		},
+	}))
+)

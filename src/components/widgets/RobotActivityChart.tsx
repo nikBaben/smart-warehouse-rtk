@@ -8,11 +8,12 @@ import {
   Tooltip,
 } from "recharts";
 import { motion } from "framer-motion";
-import { useSocketStore } from '@/store/useSocketStore.tsx'
+import { useSocketStore } from '@/store/useSocketStore'
 import { Spinner } from '@/components/ui/spinner'
+import { memo } from "react"
 
-export function RobotActivityChart(){
-	const { activitySeries } = useSocketStore()
+export const RobotActivityChart = memo(() => {
+	const activitySeries = useSocketStore(state=>state.activitySeries)
 
 	const data = activitySeries?.series.map(([iso,value])=>({
 		time: new Date(iso).toLocaleTimeString("ru-RU", {
@@ -24,8 +25,12 @@ export function RobotActivityChart(){
 	/* console.log('📊 activitySeries:', activitySeries) */
 
   return activitySeries ? (
-		<div className='bg-white rounded-[10px] pt-[6px] pl-[10px] pr-[10px] pb-[10px] col-span-5'>
-			<h3 className='dashboard-section-font'>График активности роботов</h3>
+		<motion.div
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1, y: 0 }}
+			className='bg-white rounded-[15px] pt-[6px] pl-[10px] pr-[10px] pb-[10px] col-span-5'
+		>
+			<h3 className='dashboard-widget-font'>График активности роботов</h3>
 			<div className='h-[150px] bg-white rounded-[10px] flex items-center justify-center'>
 				<div className='w-full h-full flex items-center justify-center'>
 					<ResponsiveContainer width='100%' height='100%'>
@@ -59,8 +64,7 @@ export function RobotActivityChart(){
 							/>
 							<Tooltip
 								formatter={(value: number) => [`активность: ${value}%`]}
-								labelFormatter={(label: string) => `время: ${label} мин`	
-							}
+								labelFormatter={(label: string) => `время: ${label} мин`}
 							/>
 							<motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
 								<Line
@@ -76,7 +80,7 @@ export function RobotActivityChart(){
 					</ResponsiveContainer>
 				</div>
 			</div>
-		</div>
+		</motion.div>
 	) : (
 		<div className='bg-white rounded-[10px] pt-[6px] pl-[10px] pr-[10px] pb-[10px] col-span-5'>
 			<div className='spinner-load-container'>
@@ -84,4 +88,4 @@ export function RobotActivityChart(){
 			</div>
 		</div>
 	)
-};
+});

@@ -33,8 +33,8 @@ export function Navbar() {
 					<nav className='flex flex-col gap-[30px] items-center'>
 						<NavItem icon={Home} label='Главная' to='/' />
 						<NavItem icon={MenuPlusBullets} label='Список складов' to='/list' />
-						<NavItem icon={History} label='История' to='/history' />
 						<NavItem icon={DeliveryBox} label='Поставки' to='/supplies' />
+						<NavItem icon={History} label='История' to='/history' />
 						<UploadCSV />
 					</nav>
 				</div>

@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { useUserStore } from '@/store/useUserStore.tsx'
+import { useUserStore } from '@/store/useUserStore'
 import { useWarehouseStore } from '@/store/useWarehouseStore'
 export function AddWarehouseDialog() {
 

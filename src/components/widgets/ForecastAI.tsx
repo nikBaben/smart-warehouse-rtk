@@ -51,7 +51,7 @@ const forecastData: ForecastItem[] = [
   },
 ];
 
-export const ForecastAI: React.FC = () => {
+export function ForecastAI() {
 
   const { connectionState } = useSocketStore()
   const getConnectionColor = (connectionState:number) => {
@@ -67,7 +67,7 @@ export const ForecastAI: React.FC = () => {
   return (
 		<div className='bg-white rounded-[15px]'>
 			<div className='flex items-center justify-between'>
-				<h3 className='font-medium text-[18px] mb-[5px] text-black'>
+				<h3 className='dashboard-widget-font'>
 					Прогноз ИИ на следующие 7 дней
 				</h3>
 				<svg width='20' height='20' viewBox='0 0 40 40'>
@@ -121,3 +121,4 @@ export const ForecastAI: React.FC = () => {
 		</div>
 	)
 };
+export default ForecastAI

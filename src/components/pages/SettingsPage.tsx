@@ -1,7 +1,7 @@
 import api from '@/api/axios.ts';
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { useUserStore } from '../../store/useUserStore.tsx'
+import { useUserStore } from '@/store/useUserStore'
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import ChevronDown from '@atomaro/icons/24/navigation/ChevronDown';
@@ -23,10 +23,10 @@ import {
 function SettingsPage(){
 	const token = localStorage.getItem('token')
   
-	const [showNotifications, setShowNotifications] = useState(false);
+	/* const [showNotifications, setShowNotifications] = useState(false); */
 	/* const [email, setEmail] = useState('') */
 	const [loading, setLoading] = useState(false)
-	const [error, setError] = useState<string | null>(null)
+	/* const [error, setError] = useState<string | null>(null) */
 	
 	const { user, updateUser } = useUserStore()
 
@@ -108,9 +108,12 @@ function SettingsPage(){
 						<section className='flex flex-col col-span-6 gap-[10px]'>
 							<div className='bg-white rounded-[15px] p-[10px] h-[70px] flex justify-between'>
 								<div className='flex items-center gap-[10px]'>
-									<Avatar className='h-12 w-12'>
-										<AvatarImage src='https://github.com/shadcn.png' />
-										<AvatarFallback>CN</AvatarFallback>
+									<Avatar className='h-12 w-12 bg-[#F7F0FF] border-1 border-[#7700FF]'>
+										<AvatarImage src='' />
+										<AvatarFallback>
+											{user?.first_name?.charAt(0)}
+											{user?.last_name?.charAt(0)}
+										</AvatarFallback>
 									</Avatar>
 									<div className='flex flex-col text-black'>
 										<span className='text-[18px] font-medium'>

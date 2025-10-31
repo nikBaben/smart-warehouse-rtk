@@ -1,7 +1,7 @@
 import api from '@/api/axios'
 import { useEffect, useState } from 'react'
-import { useUserStore } from '@/store/useUserStore.tsx'
-import { useWarehouseStore } from '@/store/useWarehouseStore.tsx'
+import { useUserStore } from '@/store/useUserStore'
+import { useWarehouseStore } from '@/store/useWarehouseStore'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -27,7 +27,6 @@ import {
 	Dialog,
 	DialogClose,
 	DialogContent,
-	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
@@ -579,8 +578,12 @@ function ListPage() {
 												))}
 											</div>
 										) : error ? (
-											<div className='flex items-center justify-center font-medium text-center h-full text-[#9699A3] text-[24px]'>
-												не удалось получить данные о складах
+											<div className='not-found-container'>
+												не удалось получить данные о роботах
+											</div>
+										) : robots.length === 0 ? (
+											<div className='not-found-container'>
+												<p>роботы не найдены</p>
 											</div>
 										) : (
 											<div className='max-h-[235px] overflow-y-auto space-y-2'>
@@ -772,7 +775,11 @@ function ListPage() {
 											</div>
 										) : error ? (
 											<div className='flex items-center justify-center font-medium text-center h-full text-[#9699A3] text-[24px]'>
-												не удалось получить данные о складах
+												не удалось получить данные о товарах
+											</div>
+										) : products.length === 0 ? (
+											<div className='not-found-container'>
+												<p>товары не найдены</p>
 											</div>
 										) : (
 											<div className='!max-h-[235px] overflow-y-auto !space-y-2'>

@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { Header } from '@/components/ui/header'
 import { Footer } from '@/components/ui/footer'
 import { toast } from 'sonner'
-import { useUserStore } from '@/store/useUserStore.tsx'
+import { useUserStore } from '@/store/useUserStore'
 import { Spinner } from '@/components/ui/spinner'
 
 /* type User = {
@@ -80,6 +80,10 @@ function AuthPage() {
 						<form
 							className='w-full m-[20px] h-[68px] flex flex-col gap-[20px]'
 							autoComplete='on'
+							onSubmit={e => {
+								e.preventDefault() // <-- обязательно, чтобы форма не отправлялась как GET
+								handleLogin()
+							}}
 						>
 							<h1 className='text-2xl font-bold flex flex-col items-center justify-center'>
 								Войти на склад
@@ -128,8 +132,7 @@ function AuthPage() {
 							<div className='flex flex-col items-center justify-center'>
 								<Button
 									disabled={!email || !password}
-									type='button'
-									onClick={handleLogin}
+									type='submit'
 									className={`${loading && 'button-loading'}
 									w-[365px] cursor-pointer h-[68px] rounded-[10px] text-[18px] leading-[24px] shadow-none ${
 										!email || !password
@@ -138,7 +141,7 @@ function AuthPage() {
 									}`}
 								>
 									{loading ? (
-										<div className='spinner-load-container'>
+										<div className='spinner-load-container !text-white'>
 											<Spinner className='size-5 m-1' /> загрузка...
 										</div>
 									) : (

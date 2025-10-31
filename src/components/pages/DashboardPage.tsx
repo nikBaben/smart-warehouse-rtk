@@ -1,33 +1,26 @@
 import { useEffect} from "react";
-import { ScanStoryTable } from "../widgets/ScanStoryTable.tsx";
+import { motion } from 'framer-motion';
+import { ScanStoryTable } from "../widgets/ScanStoryTable";
 import { RobotActivityChart } from "@/components/widgets/RobotActivityChart";
 import { ForecastAI } from "../widgets/ForecastAI";
-import { UserAvatar } from '../ui/UserAvatar.tsx'
-import { AddRobotProductDialog } from '../ui/AddRobotProductDialog.tsx'
-import { Spinner } from '@/components/ui/spinner'
-import { useWarehouseSocket } from '@/hooks/useWarehouseSocket.tsx'
-import { useSocketStore } from '@/store/useSocketStore.tsx'
-import { useWarehouseStore } from '@/store/useWarehouseStore.tsx'
-import { WarehouseMap } from '../widgets/WarehouseMap.tsx';
-
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { UserAvatar } from '../ui/UserAvatar';
+import { AddRobotProductDialog } from '../ui/AddRobotProductDialog';
+import { Spinner } from '@/components/ui/spinner';
+import { useWarehouseSocket } from '@/hooks/useWarehouseSocket';
+import { useSocketStore } from '@/store/useSocketStore';
+import { useWarehouseStore } from '@/store/useWarehouseStore';
+import { WarehouseMap } from '../widgets/WarehouseMap';
+import SelectWarehouse from "../ui/SelectWarehouse";
 
 function DashboardPage(){
 	const token = localStorage.getItem('token')
-	const { warehouses, selectedWarehouse, setSelectedWarehouse, loading, error } = useWarehouseStore()
+	const { warehouses, selectedWarehouse } = useWarehouseStore()
 	const {
 		avgBattery,
 		robotsData,
 		scanned24h,
 		criticalUnique,
 		statusAvg,
-		resetData,
 	} = useSocketStore()
 	const { readyState } = useWarehouseSocket(selectedWarehouse?.id ?? '')
 	
@@ -57,41 +50,7 @@ function DashboardPage(){
 				<header className='header-style'>
 					<span className='pagename-font'>Дашборд</span>
 					<div className='ml-auto flex items-center gap-4'>
-						<div className='relative'>
-							<Select
-								value={selectedWarehouse?.id || ''}
-								onValueChange={id => {
-									const wh = warehouses.find(w => w.id === id) || null
-									setSelectedWarehouse(wh)
-									resetData()
-								}}
-							>
-								<SelectTrigger className='select-warehouse'>
-									<SelectValue placeholder='Выберите склад' />
-								</SelectTrigger>
-								<SelectContent>
-									{loading ? (
-										<div className='spinner-load-container'>
-											<Spinner className='size-5 m-1' /> загрузка складов...
-										</div>
-									) : error ? (
-										<div className='flex items-center justify-center text-[20px] text-[#FF9393]'>
-											не удалось загрузить
-										</div>
-									) : warehouses.length === 0 ? (
-										<div className='flex items-center justify-center text-[20px] text-[#FED388]'>
-											нет доступных складов
-										</div>
-									) : (
-										warehouses.map(w => (
-											<SelectItem key={w.id} value={w.id.toString()}>
-												{w.name}
-											</SelectItem>
-										))
-									)}
-								</SelectContent>
-							</Select>
-						</div>
+						<SelectWarehouse />
 						<div className='flex items-center space-x-5'>
 							{selectedWarehouse?.id ? <AddRobotProductDialog /> : <></>}
 							<UserAvatar />
@@ -105,9 +64,23 @@ function DashboardPage(){
 						</div>
 					) : (
 						<div className='grid grid-cols-12 gap-3 h-full'>
-							<section className='bg-white rounded-[10px] p-[10px] flex flex-col col-span-5'>
-								<h2 className='font-semibold text-[18px] mb-3'>Карта склада</h2>
+							<section className='bg-white rounded-[15px] p-[10px] flex flex-col col-span-5'>
+								<h2 className='dashboard-section-font'>Карта склада</h2>
 								<div className='flex-1 bg-transparent rounded-[10px] w-full'>
+									<div className='flex w-full text-[14px] justify-left items-center pb-1 gap-6'>
+										<div className='flex items-center gap-2'>
+											<div className='h-2 w-6 rounded-[100px] bg-[#FFD6D6]' />
+											<p>разгрузка</p>
+										</div>
+										<div className='flex items-center gap-2'>
+											<div className='h-2 w-6 rounded-[100px] bg-[#D6FFD6]' />
+											<p>хранение</p>
+										</div>
+										<div className='flex items-center gap-2'>
+											<div className='h-2 w-6 rounded-[100px] bg-[#D6E0FF]' />
+											<p>погрузка</p>
+										</div>
+									</div>
 									<WarehouseMap />
 								</div>
 							</section>
@@ -115,7 +88,10 @@ function DashboardPage(){
 								<div className='bg-transparent grid grid-cols-7 gap-3 col-span-2 w-full'>
 									<div className='dashboard-card'>
 										{criticalUnique?.unique_articles !== undefined ? (
-											<div>
+											<motion.div
+												initial={{ opacity: 0, y: 20 }}
+												animate={{ opacity: 1, y: 0 }}
+											>
 												<h3 className='dashboard-section-font'>
 													Критические остатки
 												</h3>
@@ -127,9 +103,9 @@ function DashboardPage(){
 														количество SKU
 													</p>
 												</div>
-											</div>
+											</motion.div>
 										) : (
-											<div className='spinner-load-container'>
+											<div className='spinner-load-container dashboard-card-load-font'>
 												<Spinner className='size-5 m-1' /> ищем критические
 												остатки...
 											</div>
@@ -137,7 +113,10 @@ function DashboardPage(){
 									</div>
 									<div className='dashboard-card'>
 										{scanned24h?.count !== undefined ? (
-											<div>
+											<motion.div
+												initial={{ opacity: 0, y: 20 }}
+												animate={{ opacity: 1, y: 0 }}
+											>
 												<h3 className='dashboard-section-font'>
 													Проверено за 24ч
 												</h3>
@@ -150,9 +129,9 @@ function DashboardPage(){
 														позиций{' '}
 													</p>
 												</div>
-											</div>
+											</motion.div>
 										) : (
-											<div className='spinner-load-container'>
+											<div className='spinner-load-container dashboard-card-load-font'>
 												<Spinner className='size-4 m-1' /> собираем
 												статистику...
 											</div>
@@ -160,7 +139,10 @@ function DashboardPage(){
 									</div>
 									<div className='dashboard-card !col-span-3'>
 										{statusAvg?.status !== undefined ? (
-											<div>
+											<motion.div
+												initial={{ opacity: 0, y: 20 }}
+												animate={{ opacity: 1, y: 0 }}
+											>
 												<h3 className='dashboard-section-font'>
 													Ср. статус по складу
 												</h3>
@@ -172,9 +154,9 @@ function DashboardPage(){
 														статистика
 													</p>
 												</div>
-											</div>
+											</motion.div>
 										) : (
-											<div className='spinner-load-container'>
+											<div className='spinner-load-container dashboard-card-load-font'>
 												<Spinner className='size-4 m-1' /> определяем ср. статус
 												склада...
 											</div>
@@ -186,7 +168,10 @@ function DashboardPage(){
 									<div className='flex flex-col col-span-2 gap-3'>
 										<div className='dashboard-card !h-full'>
 											{robotsData?.robots !== undefined ? (
-												<div>
+												<motion.div
+													initial={{ opacity: 0, y: 20 }}
+													animate={{ opacity: 1, y: 0 }}
+												>
 													<h3 className='dashboard-section-font mb-0'>
 														Роботы
 													</h3>
@@ -198,9 +183,9 @@ function DashboardPage(){
 															активных/всего
 														</p>
 													</div>
-												</div>
+												</motion.div>
 											) : (
-												<div className='spinner-load-container'>
+												<div className='spinner-load-container dashboard-card-load-font'>
 													<Spinner className='size-4 m-1' /> загружаем
 													роботов...
 												</div>
@@ -208,7 +193,10 @@ function DashboardPage(){
 										</div>
 										<div className='dashboard-card !h-full'>
 											{avgBattery?.avg_battery ? (
-												<div>
+												<motion.div
+													initial={{ opacity: 0, y: 20 }}
+													animate={{ opacity: 1, y: 0 }}
+												>
 													<h3 className='dashboard-section-font'>
 														Ср. заряд батарей
 													</h3>
@@ -220,9 +208,9 @@ function DashboardPage(){
 															среднее значение
 														</p>
 													</div>
-												</div>
+												</motion.div>
 											) : (
-												<div className='spinner-load-container'>
+												<div className='spinner-load-container dashboard-card-load-font'>
 													<Spinner className='size-4 m-1' /> считаем заряд
 													батарей...
 												</div>
@@ -230,13 +218,13 @@ function DashboardPage(){
 										</div>
 									</div>
 								</div>
-								<div className='scroll-padding bg-white rounded-[10px] pl-[10px] pt-[6px] pr-[10px] col-span-2 h-[239px]'>
-									<h3 className='dashboard-section-font mb-0'>
+								<div className='scroll-padding bg-white rounded-[15px] pl-[10px] pt-[6px] pr-[10px] col-span-2 h-[239px]'>
+									<h3 className='dashboard-widget-font'>
 										Последние сканирования
 									</h3>
 									<ScanStoryTable />
 								</div>
-								<div className='bg-white rounded-[10px] pl-[10px] pt-[6px] pr-[10px] pb-[10px] col-span-2'>
+								<div className='bg-white rounded-[15px] pl-[10px] pt-[6px] pr-[10px] pb-[10px] col-span-2'>
 									<ForecastAI />
 								</div>
 							</section>

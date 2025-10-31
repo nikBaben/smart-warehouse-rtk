@@ -9,7 +9,7 @@ import SelectableButtons from "@/components/widgets/SelectableButtons";
 import { UserAvatar } from '../ui/UserAvatar.tsx';
 
 import { useInventoryHistory } from "@/hooks/useInventoryHistory.tsx";
-import { useWarehouseStore } from '..//../store/useWarehouseStore.tsx';
+import { useWarehouseStore } from '@/store/useWarehouseStore';
 
 import {
 	Select,

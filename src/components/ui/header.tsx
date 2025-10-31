@@ -3,7 +3,7 @@ import Logo from "/src/assets/logos/RTKlogo.svg";
 
 export function Header() {
   return (
-    <nav className="sticky top-0 left-0 z-50 w-screen bg-white border-b border-gray-200 backdrop-blur-md">
+    <nav className="sticky top-0 left-0 z-50 w-screen bg-white backdrop-blur-md">
       <div className="flex items-center justify-between h-[98px] px-4 sm:px-6 lg:px-8">
         <div className="w-[175px] h-[56px] flex gap-[3px] relative">
             <a href="/">

@@ -22,7 +22,6 @@ export function WarehouseMap() {
 	const { robotPositions, productSnapshot } = useSocketStore()
 	const robots = robotPositions?.robots ?? []
 	const products = productSnapshot?.items ?? []
-  
 
 	const containerRef = useRef<HTMLDivElement>(null)
   
@@ -56,6 +55,17 @@ export function WarehouseMap() {
   		y: t.y + dy,
   	}))
   }
+
+
+
+	function getMinutesAgo(created_at: string) {
+		const createdAt = new Date(created_at)
+		const now = new Date()
+		if (created_at==null){
+			return 0;
+		}
+		else return Math.floor((now.getTime() - createdAt.getTime()) / 60000)
+	}
 
   //функции зума с учетом реализацией ограничений масштаба
 	const zoomIn = () => setTransform(t => ({ ...t, scale: Math.min(t.scale * 1.1,3)}))
@@ -91,16 +101,55 @@ export function WarehouseMap() {
 		}
 	}
 
-	const getProductStatusColor = (status: string) => {
+	//получаем цвет фона в зависимости от статуса товара
+	const getProductStatusFill = (status: string) => {
 		switch (status) {
 			case 'ok':
-				return '#0ACB5B'
+				return {
+					rect: 'fill-[#3BD57C]',
+					tooltip: 'bg-[#3BD57C]',
+				}
 			case 'low':
-				return '#FDA610'
+				return {
+					rect: 'fill-[#4C87FF]',
+					tooltip: 'bg-[#4C87FF]',
+				}
 			case 'critical':
-				return '#FF4F12'
+				return {
+					rect: 'fill-[#FDB840]',
+					tooltip: 'bg-[#FDB840]',
+				}
 			default:
-				return '#585D69'
+				return {
+					rect: 'fill-[#585D69]',
+					tooltip: 'bg-[#585D69]',
+				}
+		}
+	}
+
+	//получаем цвет в зависимости от кол-ва минут, прошедших с последнего сканирования
+	const getProductStatusBorder = (time: number) => {
+		switch (true) {
+			case time >= 8 && time < 10:
+				return {
+					rect: 'stroke-[#D78D0E]',
+					tooltip: 'border-[#D78D0E]',
+				}
+			case time>=10 || time === null:
+				return {
+					rect: 'stroke-[#D92020]',
+					tooltip: 'border-[#D92020]',
+				}
+			case time<8:
+				return {
+					rect: 'stroke-[#078E40]',
+					tooltip: 'border-[#078E40]',
+				}
+			default:
+				return {
+					rect: 'stroke-[#585D69]',
+					tooltip: 'border-[#585D69]',
+				}
 		}
 	}
 
@@ -140,6 +189,7 @@ export function WarehouseMap() {
 	const gridWidth = cellWidth * GRID_X
 	const gridHeight = cellHeight * GRID_Y
 
+	//смещение (отступы)
 	const offsetX = 10
 	const offsetY = 10
 
@@ -176,23 +226,23 @@ export function WarehouseMap() {
 							x={0}
 							y={0}
 							width={gridWidth}
-							height={gridHeight / 3}
+							height={gridHeight / 4}
 							fill='#FFD6D6'
 							opacity={0.3}
 						/>
 						<rect
 							x={0}
-							y={gridHeight / 3}
+							y={gridHeight/4}
 							width={gridWidth}
-							height={gridHeight / 3}
+							height={gridHeight / 2}
 							fill='#D6FFD6'
 							opacity={0.3}
 						/>
 						<rect
 							x={0}
-							y={(gridHeight / 3) * 2}
+							y={(gridHeight/4)*3}
 							width={gridWidth}
-							height={gridHeight / 3}
+							height={gridHeight / 4}
 							fill='#D6E0FF'
 							opacity={0.3}
 						/>
@@ -222,17 +272,39 @@ export function WarehouseMap() {
 
 						{/* ТОВАРЫ */}
 						{products.map((item, index) => (
-							<rect
-								key={index}
-								x={item.current_shelf * cellWidth}
-								y={(GRID_Y - item.current_row - 1) * cellHeight}
-								width={cellWidth}
-								height={cellHeight}
-								fill={getProductStatusColor(item.status)}
-								opacity={1}
-								stroke='#ffffff'
-								rx={2}
-							/>
+							<TooltipProvider>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<rect
+											key={index}
+											x={item.current_shelf * cellWidth}
+											y={(GRID_Y - item.current_row - 1) * cellHeight}
+											width={cellWidth}
+											height={cellHeight}
+											className={`
+												${getProductStatusFill(item.status).rect}
+												${getProductStatusBorder(getMinutesAgo(item.created_at)).rect}`
+											}
+											opacity={1}
+											stroke='#ffffff'
+											rx={2}
+										/>
+									</TooltipTrigger>
+									<TooltipContent
+										className={`
+											${getProductStatusFill(item.status).tooltip}
+											${getProductStatusBorder(getMinutesAgo(item.created_at)).tooltip} p-2 border-[1px] text-[10px]`}
+									>
+										<p>имя: {item.name}</p>
+										<Separator className='bg-black' />
+										<p>кол-во: {item.stock}</p>
+										<Separator className='bg-black' />
+										<p>статус: {getStatusName(item.status)}</p>
+										<Separator className='bg-black' />
+										<p>скан: {getMinutesAgo(item.created_at)} мин. назад</p>
+									</TooltipContent>
+								</Tooltip>
+							</TooltipProvider>
 						))}
 
 						{/* РОБОТЫ */}

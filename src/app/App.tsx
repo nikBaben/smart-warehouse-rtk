@@ -8,14 +8,15 @@ import {
 import { Navbar } from "@/components/widgets/navbar";
 import { Toaster } from '@/components/ui/sonner'
 import { useState } from 'react'
-import DashboardPage from '../components/pages/DashboardPage'
-import  AuthPage  from '../components/pages/AuthPage';
-import HistoryPage from "../components/pages/HistoryPage";
-import SuppliesPage from '../components/pages/SuppliesPage'
-import ListPage from '../components/pages/ListPage';
-import InfoPage from '../components/pages/InfoPage'
-import SettingsPage from '../components/pages/SettingsPage'
-import NotFound from '../app/not-found'
+import DashboardPage from '@/components/pages/DashboardPage'
+import  AuthPage  from '@/components/pages/AuthPage';
+import HistoryPage from "@/components/pages/HistoryPage";
+import SuppliesPage from '@/components/pages/SuppliesPage'
+import ListPage from '@/components/pages/ListPage';
+import InfoPage from '@/components/pages/InfoPage'
+import SettingsPage from '@/components/pages/SettingsPage'
+import NotFound from '@/app/not-found'
+import ServerErrorPage from '@/components/pages/ServerErrorPage';
 
 function AppLayout() {
 	const location = useLocation()
@@ -42,6 +43,7 @@ function AppLayout() {
 					<Route path='/list' element={<ListPage />} />
 					<Route path='/info' element={<InfoPage />} />
 					<Route path='/settings' element={<SettingsPage />} />
+					<Route path='/500' element={<ServerErrorPage/>}/>
 					<Route path='*' element={<NotFound />} />
 				</Routes>
 			</main>

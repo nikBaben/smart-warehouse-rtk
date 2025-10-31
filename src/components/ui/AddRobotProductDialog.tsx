@@ -4,7 +4,6 @@ import {
 	Dialog,
 	DialogClose,
 	DialogContent,
-	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
@@ -24,8 +23,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { useUserStore } from '@/store/useUserStore.tsx'
-import { useWarehouseStore } from '@/store/useWarehouseStore.tsx'
+import { useUserStore } from '@/store/useUserStore'
+import { useWarehouseStore } from '@/store/useWarehouseStore'
 import { ToggleButtons } from './ToggleButtons.tsx'
 
 export function AddRobotProductDialog() {
@@ -122,9 +121,11 @@ export function AddRobotProductDialog() {
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger asChild>
-				<Button className='add-warehouse-button' 
-					disabled={denyAdminAccess} 
-					onClick={()=>{setOpen(true)
+				<Button
+					className='add-warehouse-button'
+					disabled={denyAdminAccess}
+					onClick={() => {
+						setOpen(true)
 						setMode('robot')
 					}}
 				>
@@ -147,6 +148,7 @@ export function AddRobotProductDialog() {
 					</div>
 					{mode === 'robot' ? (
 						<form onSubmit={handleAddRobot}>
+							<div className='min-h-[20px]'></div>
 							<DialogFooter>
 								<DialogClose asChild>
 									<Button className='cancel-button'>
@@ -166,7 +168,7 @@ export function AddRobotProductDialog() {
 						</form>
 					) : (
 						<form onSubmit={handleAddProduct}>
-							<div className='grid gap-3'>
+							<div className='grid gap-3 pb-3'>
 								<div className='grid gap-3 bg-white p-[10px] rounded-[10px]'>
 									<Label className='section-title' htmlFor='name'>
 										Укажите название вашего товара
@@ -242,23 +244,23 @@ export function AddRobotProductDialog() {
 										required
 									/>
 								</div>
-							</div>
-							<DialogFooter>
-								<DialogClose asChild>
-									<Button className='cancel-button'>
-										<X className='!h-5 !w-5' />
-										Отмена
+								<DialogFooter>
+									<DialogClose asChild>
+										<Button className='cancel-button'>
+											<X className='!h-5 !w-5' />
+											Отмена
+										</Button>
+									</DialogClose>
+									<Button
+										type='submit'
+										className='bg-[#7700FF] exit-dialog-buttons'
+										disabled={loading}
+									>
+										<Check className='!h-5 !w-5' />
+										{loading ? 'Добавление...' : 'Подтвердить'}
 									</Button>
-								</DialogClose>
-								<Button
-									type='submit'
-									className='w-[50%] rounded-[10px] text-[18px] text-white font-medium bg-[#7700FF] cursor-pointer transition-all hover:brightness-90'
-									disabled={loading}
-								>
-									<Check className='!h-5 !w-5' />
-									{loading ? 'Добавление...' : 'Подтвердить'}
-								</Button>
-							</DialogFooter>
+								</DialogFooter>
+							</div>
 						</form>
 					)}
 				</div>

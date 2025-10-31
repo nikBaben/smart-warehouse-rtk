@@ -8,9 +8,12 @@ export function useWarehouseSocket(warehouseId?: string) {
   const resetData = useSocketStore(state => state.resetData)
   const setConnectionState = useSocketStore(state => state.setConnectionState)
 
-  const socketUrl = warehouseId
-		? `wss://dev.rtk-smart-warehouse.ru/api/ws/warehouses/${warehouseId}`
-		: null
+  if (typeof window !== 'undefined' && window.location.pathname !== '/'){
+    return { readyState: ReadyState.CLOSED }
+  }
+		const socketUrl = warehouseId
+			? `wss://dev.rtk-smart-warehouse.ru/api/ws/warehouses/${warehouseId}`
+			: null
 
   const { lastMessage, readyState } = useWebSocket(socketUrl,{
 		shouldReconnect: (closeEvent) => {
