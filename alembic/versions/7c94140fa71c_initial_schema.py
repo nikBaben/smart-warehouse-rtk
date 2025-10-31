@@ -1,8 +1,8 @@
-"""обязательное поле stock
+"""initial schema
 
-Revision ID: 56d94943cc9c
-Revises: a3b0e6cdb5f9
-Create Date: 2025-10-22 17:23:42.431740
+Revision ID: 7c94140fa71c
+Revises: 7ce3d8cecbcd
+Create Date: 2025-10-31 10:07:51.562866
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '56d94943cc9c'
-down_revision: Union[str, Sequence[str], None] = 'a3b0e6cdb5f9'
+revision: str = '7c94140fa71c'
+down_revision: Union[str, Sequence[str], None] = '7ce3d8cecbcd'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
