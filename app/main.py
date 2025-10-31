@@ -14,6 +14,8 @@ from app.ws.inventory_critical_streamer import continuous_inventory_critical_str
 from app.ws.inventory_status import continuous_inventory_status_avg_streamer
 from app.ws.robot_status_count_streamer import continuous_robot_status_count_streamer
 from app.ws.robot_activity_streamer import continuous_robot_activity_history_streamer
+from app.api.routers import operations
+from app.api.routers import reports
 
 app = FastAPI(title=settings.APP_NAME)
 
@@ -29,6 +31,9 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 app.include_router(ws_router.router, prefix="/api") 
+
+app.include_router(operations.router)
+app.include_router(reports.router)
 
 # Запускаем асинхронный watcher в фоне.
 @app.on_event("startup")

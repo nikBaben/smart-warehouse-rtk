@@ -12,6 +12,8 @@ from app.repositories.user_repo import UserRepository
 from app.repositories.kkid_user_repo import KkidUserRepository
 from app.repositories.inventory_history_repo import InventoryHistoryRepository
 from app.repositories.alarm_repo import AlarmRepository
+from app.repositories.operations_repo import OperationsRepository
+from app.repositories.reports_repo import ReportsRepository
 
 # Services
 from app.service.robot_service import RobotService
@@ -22,6 +24,8 @@ from app.service.keycloak_service import KeycloakService
 from app.service.user_service import UserService
 from app.service.inventory_history_service import InventoryHistoryService
 from app.service.alarm_service import AlarmService
+from app.service.operations_service import OperationsService
+from app.service.reports_service import ReportsService
 
 # DB
 from app.db.session import get_session
@@ -66,6 +70,22 @@ async def get_auth_service(session: AsyncSession = Depends(get_session), userRep
     keycloak_service = KeycloakService()
     user_service = UserService(userRepo, kkidUserRepo)
     return AuthService(keycloak_service, user_service)
+
+async def get_operations_repo(session: AsyncSession = Depends(get_session)) -> OperationsRepository:
+    return OperationsRepository(session)
+
+async def get_operations_service(
+    operations_repo: OperationsRepository = Depends(get_operations_repo)
+) -> OperationsService:
+    return OperationsService(operations_repo)
+
+async def get_reports_repo(session: AsyncSession = Depends(get_session)) -> ReportsRepository:
+    return ReportsRepository(session)
+
+async def get_reports_service(
+    reports_repo: ReportsRepository = Depends(get_reports_repo)
+) -> ReportsService:
+    return ReportsService(reports_repo)
 
 def get_user_service(userRepo:UserRepository = Depends(get_user_repo), kkidUserRepo: KkidUserRepository = Depends(get_kkid_user_repo)) -> UserService:
     return UserService(userRepo, kkidUserRepo)
