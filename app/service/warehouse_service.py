@@ -5,6 +5,26 @@ from sqlalchemy.exc import IntegrityError
 from app.schemas.warehouse import WarehouseCreate, WarehouseUpdate
 from app.repositories.warehouse_repo import WarehouseRepository
 from app.models.warehouse import Warehouse
+from psycopg.errors import ForeignKeyViolation, UniqueViolation, NotNullViolation  # psycopg3
+
+from sqlalchemy.exc import IntegrityError
+
+def pg_error_info(e: IntegrityError):
+    orig = getattr(e, "orig", None)
+    code = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
+    diag = getattr(orig, "diag", None)
+    detail = (
+        getattr(diag, "message_detail", None)
+        or getattr(diag, "message_primary", None)
+        or getattr(orig, "pgerror", None)
+        or str(e)
+    )
+    meta = {
+        "table": getattr(diag, "table_name", None),
+        "column": getattr(diag, "column_name", None),
+        "constraint": getattr(diag, "constraint_name", None),
+    }
+    return code, detail, meta
 
 class WarehouseService:
     def __init__(self, repo: WarehouseRepository):
@@ -82,15 +102,21 @@ class WarehouseService:
             raise HTTPException(status_code=404, detail=str(e))
 
         except IntegrityError as e:
-            code = getattr(getattr(e, "orig", None), "pgcode", None) or getattr(getattr(e, "orig", None), "sqlstate", None)
-            detail = str(getattr(getattr(e, "orig", None), "diag", None) or e.orig or e)
-
-            if code == "23503":  # FK violation
+            code, detail, meta = pg_error_info(e)
+            # Превратите в понятный HTTP-ответ
+            if code == "23503":  # foreign_key_violation
+                tbl = meta.get("table") or "unknown_table"
+                con = meta.get("constraint") or "unknown_constraint"
                 raise HTTPException(
                     status_code=422,
-                    detail="Невозможно удалить склад: на него ссылаются другие сущности (FK violation)."
+                    detail=f"Невозможно удалить склад: на него ссылаются записи (table={tbl}, constraint={con}). {detail}"
                 )
+            if code == "23502":  # not_null_violation (бывает при ON DELETE SET NULL + NOT NULL колонка)
+                col = meta.get("column") or "unknown"
+                raise HTTPException(status_code=400, detail=f"Колонка '{col}' не может быть NULL при удалении.")
             raise HTTPException(status_code=500, detail=f"Integrity error: {detail}")
+
+
     
     async def get_warehouses(self, *, limit: int = 100, offset: int = 0) -> list[Warehouse]:
         limit = min(max(limit, 1), 500)

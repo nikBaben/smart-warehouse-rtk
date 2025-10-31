@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload,noload
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, delete as sa_delete
 
 from app.models.warehouse import Warehouse
 
@@ -90,16 +91,23 @@ class WarehouseRepository:
         return warehouse
     
     async def delete(self, id: str):
-        warehouse = await self.session.scalar(
-            select(Warehouse).where(Warehouse.id == id)
+        exists = await self.session.scalar(
+            select(Warehouse.id).where(Warehouse.id == id)
         )
-
-        if not warehouse:
+        if not exists:
             raise ValueError(f"Склад с id '{id}' не найден.")
 
-        await self.session.delete(warehouse)
-
         try:
+            # Сбрасываем любые незакоммиченные изменения,
+            # чтобы ORM не флашнул апдейты детей:
+            await self.session.rollback()
+
+            # Никакого autoflush — сразу SQL DELETE по складу.
+            with self.session.no_autoflush:
+                await self.session.execute(
+                    sa_delete(Warehouse).where(Warehouse.id == id)
+                )
+
             await self.session.commit()
         except IntegrityError as e:
             await self.session.rollback()

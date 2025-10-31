@@ -27,10 +27,9 @@ class InventoryHistory(Base):
         index=True,
     )
     warehouse_id: Mapped[str] = mapped_column(
-        String(50),
-        ForeignKey("warehouses.id", ondelete="RESTRICT", onupdate="CASCADE"),
-        nullable=False,
-        index=True,
+    String(50),
+    ForeignKey("warehouses.id", ondelete="CASCADE"),
+    nullable=False
     )
 
     robot = relationship("Robot", back_populates="history", lazy="joined")

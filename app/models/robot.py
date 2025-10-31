@@ -23,9 +23,8 @@ class Robot(Base):
 
     warehouse_id: Mapped[str] = mapped_column(
         String(50),
-        ForeignKey("warehouses.id", ondelete="RESTRICT", onupdate="CASCADE"),
-        nullable=False,
-        index=True,
+        ForeignKey("warehouses.id", ondelete="CASCADE"),
+        nullable=False
     )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

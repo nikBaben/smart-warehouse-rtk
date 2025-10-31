@@ -20,9 +20,8 @@ class RobotHistory(Base):
     )
     warehouse_id: Mapped[str] = mapped_column(
         String(50),
-        ForeignKey("warehouses.id", ondelete="RESTRICT", onupdate="CASCADE"),
-        nullable=False,
-        index=True,
+        ForeignKey("warehouses.id", ondelete="CASCADE"),
+        nullable=False
     )
 
     status: Mapped[str] = mapped_column(String(50), nullable=False)  # idle/charging/scanning/...
