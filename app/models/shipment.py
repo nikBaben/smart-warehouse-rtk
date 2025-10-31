@@ -9,6 +9,7 @@ from app.db.base import Base
 from app.models.enums import ShipmentStatus
 
 
+
 class Shipment(Base):
     __tablename__ = "shipments"
 
