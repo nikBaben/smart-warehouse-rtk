@@ -42,18 +42,6 @@ function HistoryPage(){
     }
   };
 
-  const zones = ["разгрузка", "погрузка", "заморозка", "зона особых товаров"];
-  const categories = [
-    "бытовая техника и электроника",
-    "смартфоны",
-    "комплектующие для ПК",
-    "сетевое оборудование",
-    "драгоценные металлы",
-    "редкие дорогостоящие вещества",
-    "оружие",
-    "другое",
-  ];
-
   const [search, setSearch] = useState("");
   const [selectedZone, setSelectedZone] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string[]>([]);
@@ -66,19 +54,53 @@ function HistoryPage(){
 
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
+  const [graphData, setGraphData] = useState<any[]>([]);
 
   const [sortBy, setSortBy] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const handleSort = (key: string, direction: "asc" | "desc") => {
     setSortBy(key);
     setSortOrder(direction);
-    setPage(1); // при смене сортировки всегда возвращаемся на первую страницу
+    setPage(1);
   };
 
   const token = localStorage.getItem("token");
   const { warehouses, selectedWarehouse, setSelectedWarehouse, fetchWarehouses } =
     useWarehouseStore();
+
+    const [zones, setZones] = useState<string[]>([]);
+    const [categories, setCategories] = useState<string[]>([]);
+
+    useEffect(() => {
+    const fetchZonesAndCategories = async () => {
+        if (!selectedWarehouse?.id || !token) return;
+
+        try {
+        const [zonesRes, categoriesRes] = await Promise.all([
+            axios.get(
+            `https://dev.rtk-smart-warehouse.ru/api/v1/inventory_history/inventory_history_unique_zones/${selectedWarehouse.id}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+            ),
+            axios.get(
+            `https://dev.rtk-smart-warehouse.ru/api/v1/inventory_history/inventory_history_unique_categories/${selectedWarehouse.id}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+            ),
+        ]);
+
+        setZones(zonesRes.data || []);
+        setCategories(categoriesRes.data || []);
+        } catch (err) {
+        console.error("Ошибка загрузки зон или категорий:", err);
+        setZones([]);
+        setCategories([]);
+        }
+    };
+
+
+    fetchZonesAndCategories();
+    }, [selectedWarehouse?.id, token]);
+
 
   useEffect(() => {
     fetchWarehouses();
@@ -102,7 +124,9 @@ function HistoryPage(){
     sortOrder
     );
 
-    console.log(sortOrder);
+    console.log(selectedWarehouse?.id);
+    console.log(selectedRows);
+    console.log(graphData);
 
   type Column<T> = {
     header: string;
@@ -417,24 +441,161 @@ function HistoryPage(){
                                             Экспорт в Excel
                                     </Button>
 
-                                        <Button className="h-[30px] w-[187px] text-[12px] text-[#7700FF] bg-[#F7F0FF] border-[#7700FF] border-[1px] rounded-[10px] font-medium">
+                                    <Button
+                                        className="h-[30px] w-[187px] text-[12px] text-[#7700FF] bg-[#F7F0FF] border-[#7700FF] border-[1px] rounded-[10px] font-medium"
+                                        onClick={async () => {
+                                            if (!selectedWarehouse?.id) {
+                                            alert("Выберите склад");
+                                            return;
+                                            }
+                                            if (selectedRows.length === 0) {
+                                            alert("Выберите хотя бы одну строку для экспорта");
+                                            return;
+                                            }
+
+                                            try {
+                                            const res = await fetch(
+                                                `https://dev.rtk-smart-warehouse.ru/api/v1/inventory_history/inventory_history_export_to_pdf/${selectedWarehouse.id}`,
+                                                {
+                                                method: "POST",
+                                                headers: {
+                                                    "Content-Type": "application/json",
+                                                    Authorization: `Bearer ${token}`,
+                                                },
+                                                body: JSON.stringify({ record_ids: selectedRows }),
+                                                }
+                                            );
+
+                                            if (!res.ok) {
+                                                const text = await res.text();
+                                                console.error("Ошибка сервера:", text);
+                                                throw new Error("Ошибка при получении файла");
+                                            }
+
+                                            const blob = await res.blob();
+
+                                            const disposition = res.headers.get("Content-Disposition");
+                                            let filename = "Отчёт.pdf";
+                                            if (disposition && disposition.includes("filename=")) {
+                                                filename = disposition
+                                                .split("filename=")[1]
+                                                .replace(/"/g, "")
+                                                .trim();
+                                            }
+
+                                            const url = window.URL.createObjectURL(blob);
+                                            const a = document.createElement("a");
+                                            a.href = url;
+                                            a.download = filename;
+                                            document.body.appendChild(a);
+                                            a.click();
+                                            a.remove();
+                                            window.URL.revokeObjectURL(url);
+                                            } catch (err) {
+                                            console.error(err);
+                                            alert("Не удалось скачать файл");
+                                            }
+                                        }}
+                                        >
                                             <Upload fill="#7700FF" className="h-[8px] w-[8px]"/>
                                             Экспорт в PDF
                                         </Button>
                                     </div>
-                                        <Button
-                                            onClick={() => setShowGraph(true)}
-                                            className="h-[30px] w-[187px] text-[12px] text-white bg-[#7700FF] rounded-[10px] font-medium"
-                                            >
-                                            <StatisticsLine fill="white" className="h-[6px] w-[11px]" />
-                                            Построить график
-                                        </Button>
+                                    <Button
+                                        onClick={async () => {
+                                            if (!selectedWarehouse?.id) {
+                                            alert("Выберите склад");
+                                            return;
+                                            }
+                                            if (selectedRows.length === 0) {
+                                            alert("Выберите хотя бы одну строку для построения графика");
+                                            return;
+                                            }
+
+                                            try {
+                                            const res = await fetch(
+                                                `https://dev.rtk-smart-warehouse.ru/api/v1/inventory_history/inventory_history_create_graph/${selectedWarehouse.id}`,
+                                                {
+                                                method: "POST",
+                                                headers: {
+                                                    "Content-Type": "application/json",
+                                                    Authorization: `Bearer ${token}`,
+                                                },
+                                                body: JSON.stringify({ record_ids: selectedRows }),
+                                                }
+                                            );
+
+                                            if (!res.ok) {
+                                                const text = await res.text();
+                                                console.error("Ошибка сервера:", text);
+                                                throw new Error("Ошибка при построении графика");
+                                            }
+
+                                            const json = await res.json();
+                                            const rawData = json.data || {};
+
+                                            // Функция усечения до секунд
+                                            const normalizeDate = (iso: string) => {
+                                                const d = new Date(iso);
+                                                d.setMilliseconds(0);
+                                                return d.toISOString(); // формат YYYY-MM-DDTHH:mm:ssZ
+                                            };
+
+                                            // Шаг 1 — собираем все возможные метки времени
+                                            const allDates = new Set<string>();
+                                            Object.values(rawData).forEach((entries: any) => {
+                                                entries.forEach(([dateStr]: [string, number]) =>
+                                                allDates.add(normalizeDate(dateStr))
+                                                );
+                                            });
+
+                                            const sortedDates = Array.from(allDates).sort(
+                                                (a, b) => new Date(a).getTime() - new Date(b).getTime()
+                                            );
+
+                                            // Шаг 2 — создаем таблицу со всеми датами и товарами
+                                            const merged: Record<string, any> = {};
+                                            const lastKnown: Record<string, number | null> = {};
+
+                                            sortedDates.forEach((date) => {
+                                                merged[date] = { date };
+                                                Object.keys(rawData).forEach((product) => {
+                                                // Находим запись с этой датой, если есть
+                                                const entry = (rawData[product] as [string, number][]).find(
+                                                    ([d]) => normalizeDate(d) === date
+                                                );
+
+                                                if (entry) {
+                                                    const [, value] = entry;
+                                                    lastKnown[product] = value;
+                                                }
+
+                                                merged[date][product] =
+                                                    lastKnown[product] !== undefined ? lastKnown[product] : null;
+                                                });
+                                            });
+
+                                            // Превращаем в массив для Recharts
+                                            const formattedData = Object.values(merged);
+
+                                            setGraphData(formattedData);
+                                            setShowGraph(true);
+                                            } catch (err) {
+                                            console.error(err);
+                                            alert("Не удалось построить график");
+                                            }
+                                        }}
+                                        className="h-[30px] w-[187px] text-[12px] text-white bg-[#7700FF] rounded-[10px] font-medium"
+                                        >
+                                        <StatisticsLine fill="white" className="h-[6px] w-[11px]" />
+                                        Построить график
+                                    </Button>
                                 </div>
                             </div>
                         </div>
                     )}
                     {showGraph && (
-                        <TrendGraph onClose={() => setShowGraph(false)} />
+                        <TrendGraph data={graphData} onClose={() => setShowGraph(false)} />
                     )}
                 </main>
             </div>
