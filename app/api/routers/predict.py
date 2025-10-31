@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException,Depends
 from typing import Optional
 from datetime import datetime
 from app.ml.predictor import Predictor
 import os
+from app.service.predict_service import PredictService
+from app.api.deps import get_predict_service
 
 router = APIRouter(prefix="/ml", tags=["ml"])
 
@@ -37,4 +39,19 @@ async def get_depletion(
         "horizon_days": horizon_days,
         "depletion_at": dt.isoformat() if dt else None,
         "model_used": os.path.basename(model_path),
+    }
+
+
+@router.get("/soon_depleted")
+async def get_top5_soon_depleted(
+    warehouse_id: str = Query(..., description="ID склада"),
+    service: PredictService = Depends(get_predict_service),
+):
+    """
+    Возвращает 5 ближайших товаров по дате истощения.
+    """
+    data = await service.get_top5_depletion(warehouse_id)
+    return {
+        "warehouse_id": warehouse_id,
+        "soon_depleted": data
     }

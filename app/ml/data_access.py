@@ -111,3 +111,14 @@ async def fetch_planned_incoming(
     agg = df.resample(freq).sum().fillna(0).reset_index().rename(columns={"ts": "ds"})
     _ensure_dt64(agg, "ds")
     return agg[["ds", "incoming"]]
+    
+async def fetch_all_product_ids(session, warehouse_id: str) -> list[str]:
+    res = await session.execute(
+        """
+        SELECT DISTINCT product_id
+        FROM inventory_history
+        WHERE warehouse_id = :wid
+        """,
+        {"wid": warehouse_id}
+    )
+    return [r[0] for r in res.fetchall()]

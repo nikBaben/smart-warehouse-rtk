@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import Depends, HTTPException, status
 import logging
+from app.service.predict_service import PredictService
 
 # Repositories
 from app.repositories.robot_repo import RobotRepository
@@ -29,6 +30,8 @@ from app.service.reports_service import ReportsService
 
 # DB
 from app.db.session import get_session
+from app.repositories.predict_repo import PredictRepository
+
 
 
 logger = logging.getLogger(__name__)
@@ -151,3 +154,13 @@ async def keycloak_auth_middleware(
 async def get_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Получение токена из заголовка Authorization"""
     return credentials.credentials
+
+
+
+def get_predict_repo(db: AsyncSession = Depends(get_session)) -> PredictRepository:
+    return PredictRepository(db)
+
+
+
+def get_predict_service(repo: PredictRepository = Depends(get_predict_repo)) -> PredictService:
+    return PredictService(repo)
