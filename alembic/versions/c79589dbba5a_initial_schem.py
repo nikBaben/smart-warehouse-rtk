@@ -1,8 +1,8 @@
-"""Правка backpopule
+"""initial schem
 
-Revision ID: fc834c90976f
-Revises: 0618a68a9abf
-Create Date: 2025-10-26 17:23:08.286307
+Revision ID: c79589dbba5a
+Revises: 7c94140fa71c
+Create Date: 2025-10-31 10:08:06.351646
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'fc834c90976f'
-down_revision: Union[str, Sequence[str], None] = '0618a68a9abf'
+revision: str = 'c79589dbba5a'
+down_revision: Union[str, Sequence[str], None] = '7c94140fa71c'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -14,11 +14,14 @@ class Shipment(Base):
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
-    warehouse_id: Mapped[Optional[str]] = mapped_column(
+    warehouse_id: Mapped[str | None] = mapped_column(
         String(50),
-        ForeignKey("warehouses.id", ondelete="SET NULL", onupdate="CASCADE"),
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
+    )
+
+    warehouse: Mapped["Warehouse"] = relationship(
+        "Warehouse", back_populates="shipments"
     )
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     shipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
@@ -33,7 +36,7 @@ class Shipment(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    warehouse: Mapped[Optional["Warehouse"]] = relationship("Warehouse", lazy="joined")
+
 
 
 class ShipmentItems(Base):

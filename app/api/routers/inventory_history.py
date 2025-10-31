@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, status, Body, Response
-from app.schemas.inventory_history import InventoryHistoryRead, InventoryHistoryFilters, FilteredInventoryHistoryResponse, InventoryHistoryExport
+from app.schemas.inventory_history import InventoryHistoryRead, InventoryHistoryFilters, FilteredInventoryHistoryResponse, InventoryHistoryExport, ChartResponse
 from app.service.inventory_history_service import InventoryHistoryService
 from app.api.deps import get_inventory_history_service  
+from typing import List
 
 from io import BytesIO
 import datetime
@@ -67,9 +68,9 @@ async def get_filtered_inventory_history(
 @router.post(
     "/inventory_history_export_to_xl/{warehouse_id}",
     status_code=status.HTTP_200_OK,
-    summary="Получить отфильтрованную историю инвентаризации",
+    summary="Получить exl файл",
     description="""
-    Универсальный endpoint для фильтрации истории инвентаризации.
+    Универсальный endpoint для получения exl файла.
     """
 )
 async def inventory_history_export_to_xl(
@@ -101,3 +102,89 @@ async def inventory_history_export_to_xl(
             "X-File-Name": filename
         }
     )
+
+
+@router.post(
+    "/inventory_history_export_to_pdf/{warehouse_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Получить pdf файл",
+    description="""
+    Универсальный endpoint для получения pdf файла.
+    """
+)
+async def inventory_history_export_to_pdf(
+    warehouse_id: str,
+    record_ids: InventoryHistoryExport = Body(...),
+    service: InventoryHistoryService = Depends(get_inventory_history_service),
+):
+    record_ids_list = record_ids.record_ids
+    
+    pdf: BytesIO = await service.inventory_history_export_to_pdf(
+        warehouse_id=warehouse_id,
+        record_ids=record_ids_list
+    )
+
+    file_size = len(pdf.getvalue())
+    
+    # Создаем имя файла с timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"inventory_{warehouse_id}_{timestamp}.pdf"
+
+    return Response(
+        content=pdf.getvalue(),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{filename}\"",
+            "Content-Length": str(file_size),
+            "Cache-Control": "no-cache",
+            "X-File-Size": str(file_size),
+            "X-File-Name": filename
+        }
+    )
+
+@router.post(
+    "/inventory_history_create_graph/{warehouse_id}",
+    status_code=status.HTTP_200_OK,
+    summary="История инвентаризации, привзяанная к складу",
+)
+async def inventory_history_create_graph(
+    warehouse_id: str,
+    record_ids: InventoryHistoryExport = Body(...),
+    service: InventoryHistoryService = Depends(get_inventory_history_service),
+):
+    
+    record_ids_list = record_ids.record_ids
+
+    inventory_history = await service.inventory_history_create_graph(        
+        warehouse_id=warehouse_id,
+        record_ids=record_ids_list
+    )
+
+    return ChartResponse(
+        data=inventory_history,
+    )
+
+@router.get(
+    "/inventory_history_unique_zones/{warehouse_id}",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK,
+    summary="Получить уникальные зоны склада",
+)
+async def inventory_history_unique_zones(
+    warehouse_id: str,
+    service: InventoryHistoryService = Depends(get_inventory_history_service),
+) -> List[str]:
+    return await service.inventory_history_unique_zones(warehouse_id=warehouse_id)
+
+
+@router.get(
+    "/inventory_history_unique_categories/{warehouse_id}",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK,
+    summary="Получить уникальные категории товаров на складе",
+)
+async def inventory_history_unique_categories(
+    warehouse_id: str,
+    service: InventoryHistoryService = Depends(get_inventory_history_service),
+) -> List[str]:
+    return await service.inventory_history_unique_categories(warehouse_id=warehouse_id)

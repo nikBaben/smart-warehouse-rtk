@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from typing import Optional, Literal
 from pydantic import BaseModel, Field,conint
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 
 class InventoryHistoryBase(BaseModel):
@@ -22,6 +22,7 @@ class InventoryHistoryBase(BaseModel):
 
 class InventoryHistoryRead(InventoryHistoryBase):
     id: str
+    robot_id: Optional[str]
     warehouse_id: Optional[str]
     last_update: Optional[datetime] = None
     created_at: datetime
@@ -75,6 +76,9 @@ class InventoryHistoryExport(BaseModel):
 
 
 class FilteredInventoryHistoryResponse(BaseModel):
-    data: List[InventoryHistoryRead]  
+    data: Tuple[List[InventoryHistoryRead], int]  
+
+class ChartResponse(BaseModel):
+    data: Dict[str, List[Tuple[datetime, int]]]
 
 

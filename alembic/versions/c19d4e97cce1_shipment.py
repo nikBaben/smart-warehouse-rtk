@@ -1,8 +1,8 @@
-"""Добавлена таблица для status роботов
+"""Shipment
 
-Revision ID: 9fe85ae44113
-Revises: 38773a2498f2
-Create Date: 2025-10-25 11:17:07.987605
+Revision ID: c19d4e97cce1
+Revises: 915271b2c2d8
+Create Date: 2025-10-31 16:09:20.387289
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '9fe85ae44113'
-down_revision: Union[str, Sequence[str], None] = '38773a2498f2'
+revision: str = 'c19d4e97cce1'
+down_revision: Union[str, Sequence[str], None] = '915271b2c2d8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

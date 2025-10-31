@@ -1,8 +1,8 @@
-"""обязательное поле stock
+"""Add warehouse_id to shipments and FK to warehouses
 
-Revision ID: 56d94943cc9c
-Revises: a3b0e6cdb5f9
-Create Date: 2025-10-22 17:23:42.431740
+Revision ID: daa70bc7b0cc
+Revises: 09d1a59091ab
+Create Date: 2025-10-31 16:22:53.154148
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '56d94943cc9c'
-down_revision: Union[str, Sequence[str], None] = 'a3b0e6cdb5f9'
+revision: str = 'daa70bc7b0cc'
+down_revision: Union[str, Sequence[str], None] = '09d1a59091ab'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

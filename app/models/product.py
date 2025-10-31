@@ -24,11 +24,17 @@ class Product(Base):
     current_shelf: Mapped[str] = mapped_column(String(2), nullable=False, server_default="A")  # 'A'..'Z'
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="ok")
 
-    warehouse_id: Mapped[str] = mapped_column(
-        String(50),
-        ForeignKey("warehouses.id", ondelete="RESTRICT", onupdate="CASCADE"),
-        nullable=False,
+    # ⬇️ НОВОЕ поле для горячего пути «когда последний раз сканировали»
+    last_scanned_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
         index=True,
+    )
+
+    warehouse_id: Mapped[str] = mapped_column(
+    String(50),
+    ForeignKey("warehouses.id", ondelete="CASCADE"),
+    nullable=False
     )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -46,4 +52,14 @@ class Product(Base):
         Index("ix_products_wh_row_shelf", "warehouse_id", "current_row", "current_shelf"),
         # частые фильтры по названию в рамках склада
         Index("ix_products_wh_name", "warehouse_id", "name"),
+        # ⬇️ НОВЫЙ индекс под eligible-запросы:
+        # warehouse + (row,shelf) + last_scanned_at с инклюдами под отдачу данных
+        Index(
+            "ix_products_wh_cell_lastscan",
+            "warehouse_id",
+            "current_row",
+            "current_shelf",
+            "last_scanned_at",
+            postgresql_include=("id","name","category","article","stock","min_stock","optimal_stock"),
+        ),
     )

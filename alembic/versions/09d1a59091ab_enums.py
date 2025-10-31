@@ -1,8 +1,8 @@
-"""empty message
+"""Enums
 
-Revision ID: 1c17ac83f117
-Revises: e849e942e4fa
-Create Date: 2025-10-18 23:52:21.141491
+Revision ID: 09d1a59091ab
+Revises: c19d4e97cce1
+Create Date: 2025-10-31 16:11:04.284483
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '1c17ac83f117'
-down_revision: Union[str, Sequence[str], None] = 'e849e942e4fa'
+revision: str = '09d1a59091ab'
+down_revision: Union[str, Sequence[str], None] = 'c19d4e97cce1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

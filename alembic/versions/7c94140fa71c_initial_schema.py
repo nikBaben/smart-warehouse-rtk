@@ -1,8 +1,8 @@
-"""add inventory_history with FKs to warehouse/product/robot
+"""initial schema
 
-Revision ID: a8c503d754ef
-Revises: e36eb620674b
-Create Date: 2025-10-20 19:06:13.442657
+Revision ID: 7c94140fa71c
+Revises: 7ce3d8cecbcd
+Create Date: 2025-10-31 10:07:51.562866
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'a8c503d754ef'
-down_revision: Union[str, Sequence[str], None] = 'e36eb620674b'
+revision: str = '7c94140fa71c'
+down_revision: Union[str, Sequence[str], None] = '7ce3d8cecbcd'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

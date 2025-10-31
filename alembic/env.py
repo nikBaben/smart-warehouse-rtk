@@ -5,8 +5,16 @@ from sqlalchemy import pool
 from app.core.config import settings
 from app.db.base import Base
 import app.models  
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
 config = context.config
+db_url = (
+    getattr(settings, "DB_URL", None)
+    or getattr(settings, "DATABASE_URL", None)
+    or getattr(settings, "SQLALCHEMY_DATABASE_URI", None)
+)
+if not db_url:
+    raise RuntimeError("DB URL not found in settings (DB_URL / DATABASE_URL / SQLALCHEMY_DATABASE_URI).")
 config.set_main_option("sqlalchemy.url", settings.DB_URL)
 
 if config.config_file_name is not None:
