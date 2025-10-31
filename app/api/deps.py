@@ -162,5 +162,13 @@ def get_predict_repo(db: AsyncSession = Depends(get_session)) -> PredictReposito
 
 
 
-def get_predict_service(repo: PredictRepository = Depends(get_predict_repo)) -> PredictService:
-    return PredictService(repo)
+def get_predict_service(
+    repo: PredictRepository = Depends(get_predict_repo),
+    product_repo: ProductRepository = Depends(get_product_repo),       # уже есть фабрика get_product_repo
+    warehouse_repo: WarehouseRepository = Depends(get_warehouse_repo), # уже есть фабрика get_warehouse_repo
+) -> PredictService:
+    return PredictService(
+        predict_repo=repo,
+        product_repo=product_repo,
+        warehouse_repo=warehouse_repo,
+    )
