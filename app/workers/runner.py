@@ -8,7 +8,6 @@ import sys
 import time
 import traceback
 from contextlib import suppress
-from app.emulator.service.mproc_service import run_robot_watcher_mproc
 from typing import List
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -46,7 +45,7 @@ except Exception:
 from app.events.bus import EventBus
 import app.events.bus as bus_module
 
-#from app.robot_emulator.emulator import run_robot_watcher_mproc
+from app.robot_emulator.emulator import run_robot_watcher_mproc
 
 from app.ws.products_events import continuous_product_snapshot_streamer
 from app.ws.battery_events import continuous_robot_avg_streamer
