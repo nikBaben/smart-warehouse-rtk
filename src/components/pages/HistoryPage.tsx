@@ -149,6 +149,7 @@ function HistoryPage(){
     { header: "дата и время проверки", accessor: "created_at", sortable: true },
     { header: "id робота", accessor: "robot_id", sortable: true },
     { header: "артикул", accessor: "article", sortable: true },
+    { header: "категория", accessor: "category", sortable: true },
     { header: "зона склада", accessor: "current_zone", sortable: true },
     { header: "название", accessor: "name", sortable: true },
     {
@@ -195,6 +196,7 @@ function HistoryPage(){
     setEndDate(undefined);
     setSelectedPeriods([]);
     setAppliedFilters({});
+    setSelectedRows([]);
     setSortBy("created_at");
     setSortOrder("desc");
   };

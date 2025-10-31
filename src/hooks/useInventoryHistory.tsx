@@ -9,16 +9,19 @@ const BASE_URL = "https://dev.rtk-smart-warehouse.ru/api/v1";
 
 // Одна запись из истории инвентаризации
 export interface InventoryHistoryItem {
-  id: number;
-  product_name: string;
+  id: number | string;
+  product_name?: string;
+  name?: string;
   category: string;
-  zone: string;
+  zone?: string;
+  current_zone?: string;
   status: string;
-  count: number;
-  user: string;
+  count?: number;
+  stock?: number;
+  user?: string;
   created_at: string;
-  updated_at?: string;
-  [key: string]: string | number | null | undefined; // запасной ключ
+  updated_at?: string | null;
+  [key: string]: string | number | null | undefined;
 }
 
 // Параметры фильтрации
@@ -32,13 +35,12 @@ export interface HistoryFilters {
   periods?: string[];
 }
 
-// Ответ сервера
-export interface HistoryResponse {
-  data: InventoryHistoryItem[];
-  total?: number;
-}
-
 export type SortOrder = "asc" | "desc";
+
+// Новый формат ответа сервера
+export interface HistoryResponse {
+  data: [InventoryHistoryItem[], number]; // [список, общее количество]
+}
 
 // ========================
 // 🔹 Сервис работы с API
@@ -60,7 +62,7 @@ const historyService = {
       sort_by?: string;
       sort_order?: SortOrder;
     }
-  ): Promise<InventoryHistoryItem[]> {
+  ): Promise<{ data: InventoryHistoryItem[]; total: number }> {
     const {
       page = 1,
       pageSize = 20,
@@ -100,7 +102,8 @@ const historyService = {
       }
     );
 
-    return response.data?.data ?? [];
+    const [items, total] = response.data.data || [[], 0];
+    return { data: items, total };
   },
 };
 
@@ -134,8 +137,9 @@ export function useInventoryHistory(
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState<number>(productsCount ?? 0);
 
-  const totalPages = Math.max(1, Math.ceil((productsCount ?? 0) / pageSize));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   useEffect(() => {
     if (!warehouseId || !token) return;
@@ -145,10 +149,8 @@ export function useInventoryHistory(
       setError(null);
 
       try {
-        const historyData = await historyService.getFilteredHistory(
-          warehouseId,
-          token,
-          {
+        const { data: historyData, total } =
+          await historyService.getFilteredHistory(warehouseId, token, {
             page,
             pageSize,
             search: filters?.search ?? "",
@@ -160,8 +162,7 @@ export function useInventoryHistory(
             periods: filters?.periods ?? [],
             sort_by: sortBy ?? "created_at",
             sort_order: sortOrder ?? "desc",
-          }
-        );
+          });
 
         const formatted = historyData.map((item) => ({
           ...item,
@@ -169,6 +170,7 @@ export function useInventoryHistory(
         }));
 
         setData(formatted);
+        setTotal(total);
         setError(null);
       } catch (err) {
         console.error("Ошибка при загрузке истории:", err);
@@ -207,6 +209,7 @@ export function useInventoryHistory(
     error,
     page,
     pageSize,
+    total,
     totalPages,
     setPage,
     setPageSize,
