@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.repositories.predict_repo import PredictRepository
 
 
@@ -9,29 +9,36 @@ class PredictService:
 
     async def get_top5_depletion(self, warehouse_id: str):
         """
-        Возвращает 5 ближайших товаров по дате истощения для указанного склада.
+        Возвращает 5 ближайших товаров по дате истощения для склада.
         """
         try:
-                rows = await self.repo.get_top5_soon_depleted(session, warehouse_id)
+            rows = await self.repo.get_top5_soon_depleted(warehouse_id)
 
-                if not rows:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"Для склада {warehouse_id} нет прогнозов истощения."
-                    )
+            if not rows:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Для склада {warehouse_id} нет прогнозов истощения."
+                )
 
-                return rows
+            return rows
 
         except IntegrityError as e:
-            code = getattr(getattr(e, "orig", None), "pgcode", None) or getattr(getattr(e, "orig", None), "sqlstate", None)
-            detail = str(getattr(getattr(e, "orig", None), "diag", None) or e.orig or e)
-
-            if code == "23503":  # FK violation
+            code = getattr(getattr(e, "orig", None), "pgcode", None)
+            if code == "23503":
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Связанный склад {warehouse_id} не найден (FK violation)."
+                    detail=f"Ошибка связей (FK violation) при запросе склада {warehouse_id}"
                 )
-            raise HTTPException(status_code=500, detail=f"Database integrity error: {detail}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Ошибка целостности данных: {str(e)}"
+            )
+
+        except SQLAlchemyError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Ошибка базы данных при получении прогнозов: {str(e)}"
+            )
 
         except Exception as e:
             raise HTTPException(
