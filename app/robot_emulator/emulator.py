@@ -4,6 +4,13 @@ from __future__ import annotations
 # 0) Boot flags (segfault hardening) — set BEFORE any sqlalchemy/greenlet import
 # =========================
 import os as _os
+# ✅ Правильная переменная для SQLAlchemy:
+_os.environ.setdefault("SQLALCHEMY_DISABLE_CEXTENSIONS", "1")
+
+# ✅ Psycopg3: форсируем чисто питоновскую реализацию (без C-модуля)
+# (либо замените пакет psycopg-binary на psycopg в зависимостях)
+_os.environ.setdefault("PSYCOPG_IMPL", "python")
+
 _os.environ.setdefault("DISABLE_CEXTENSIONS", "1")
 _os.environ.setdefault("GREENLET_USE_GC", "0")
 EMIT_AUTOSEND_INIT = _os.environ.setdefault("EMIT_AUTOSEND_INIT", "1") == "1"
@@ -67,6 +74,29 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://myapp-redis:6379/0")
 CLAIM_TTL_MS = int(os.getenv("CLAIM_TTL_MS", "120000"))
 COORDINATOR_SHARD_INDEX = int(os.getenv("COORDINATOR_SHARD_INDEX", "0"))
 
+# Логи выбора целей (включены по умолчанию)
+LOG_GOAL_SELECTION = os.getenv("LOG_GOAL_SELECTION", "1") == "1"
+
+# ✅ Строгий режим отбора: на каждом тике строим полный отсортированный список клеток по min(last_scanned_at)
+STALE_STRICT_MODE = os.getenv("STALE_STRICT_MODE", "1") == "1"
+
+def _glog(wid: str, rid: str, event: str, **data) -> None:
+    """Лёгкий JSON-лог по выбору цели/клеймам/движению/сканам."""
+    if not LOG_GOAL_SELECTION:
+        return
+    try:
+        payload = {
+            "evt": event,
+            "wh": wid,
+            "rid": rid,
+            "t": datetime.now(timezone.utc).isoformat(),
+            **data,
+        }
+        print("[goal]", json.dumps(payload, ensure_ascii=False), flush=True)
+    except Exception:
+        # не ломаем симуляцию из-за логов
+        pass
+
 # =========================
 # 6) Simulation constants
 # =========================
@@ -90,6 +120,7 @@ POSITIONS_MIN_INTERVAL_MS = int(os.getenv("POSITIONS_MIN_INTERVAL_MS", "75"))
 POSITIONS_KEEPALIVE_MS = int(os.getenv("POSITIONS_KEEPALIVE_MS", "1000"))
 KEEPALIVE_FULL = os.getenv("KEEPALIVE_FULL", "1") == "1"
 POSITIONS_DIFFS = os.getenv("POSITIONS_DIFFS", "0") == "1"
+# FIX: правильная логика включения отправки позиций (оставлено как было в твоём файле)
 SEND_ROBOT_POSITION = os.getenv("SEND_ROBOT_POSITION", "1") == "0"
 
 IDLE_GOAL_LOOKUP_EVERY = int(os.getenv("IDLE_GOAL_LOOKUP_EVERY", "2"))
@@ -107,6 +138,29 @@ POSITIONS_BROADCAST_INTERVAL_MS = int(os.getenv("POSITIONS_BROADCAST_INTERVAL_MS
 POSITIONS_MAX_INTERVAL_MS = int(os.getenv("POSITIONS_MAX_INTERVAL_MS", "2000"))
 
 LAST_SCANS_LIMIT = int(os.getenv("LAST_SCANS_LIMIT", "20"))
+
+# Настраиваемое окно выбора «самых старых» кандидатов (раньше было K=12)
+STALE_PICK_TOPK = int(os.getenv("STALE_PICK_TOPK", "12"))
+
+# ─── Multi-dock support ─────────────────────────────────────────────────────────
+# Можно задать через env: DOCKS_JSON='[[0,0],[13,25]]'
+try:
+    _DOCKS_ENV = os.getenv("DOCKS_JSON")
+    DOCKS: List[Tuple[int, int]] = [tuple(map(int, xy)) for xy in (json.loads(_DOCKS_ENV) if _DOCKS_ENV else [])]
+except Exception:
+    DOCKS = []
+
+# По умолчанию — только старый док, чтобы поведение не менялось без env
+if not DOCKS:
+    DOCKS = [(DOCK_X, DOCK_Y)]
+
+def nearest_dock(p: Tuple[int, int]) -> Tuple[int, int]:
+    """Ближайшая док-станция до точки p (Манхэттен)."""
+    return min(DOCKS, key=lambda d: abs(p[0]-d[0]) + abs(p[1]-d[1]))
+
+def is_at_any_dock(p: Tuple[int, int]) -> bool:
+    return p in DOCKS
+# ────────────────────────────────────────────────────────────────────────────────
 
 # =========================
 # 7) Small hot-path constants
@@ -587,23 +641,47 @@ def _drain_scan_battery(robot: Robot, now: datetime) -> bool:
 # =========================
 async def _claim_global(wid: str, cell: Tuple[int, int]) -> bool:
     if not USE_REDIS_CLAIMS:
+        _glog(wid, "-", "claim.local.ok", cell=cell)
         return True
     r = await _get_redis()
     if r is None:
+        _glog(wid, "-", "claim.redis.skip", cell=cell, reason="redis_none")
         return True
     x, y = cell
     ok = await r.set(_r_key_claim(wid, x, y), "1", nx=True, px=CLAIM_TTL_MS)
+    if ok:
+        _glog(wid, "-", "claim.redis.ok", cell=cell, ttl_ms=CLAIM_TTL_MS)
+    else:
+        _glog(wid, "-", "claim.redis.busy", cell=cell)
     return bool(ok)
+
+async def _renew_claim_global(wid: str, cell: Tuple[int, int]) -> None:
+    """Продление TTL брони клетки, пока робот к ней едет."""
+    if not USE_REDIS_CLAIMS:
+        return
+    r = await _get_redis()
+    if r is None:
+        return
+    x, y = cell
+    key = _r_key_claim(wid, x, y)
+    try:
+        await r.pexpire(key, CLAIM_TTL_MS)
+        # можно включить при необходимости:
+        # _glog(wid, "-", "claim.redis.renew", cell=cell, ttl_ms=CLAIM_TTL_MS)
+    except Exception:
+        pass
 
 async def _free_claim_global(wid: str, cell: Tuple[int, int]) -> None:
     x, y = cell
     if not USE_REDIS_CLAIMS:
         _free_claim_local(wid, cell)
+        _glog(wid, "-", "claim.local.free", cell=cell)
         return
     try:
         r = await _get_redis()
         if r is not None:
             await r.delete(_r_key_claim(wid, x, y))
+            _glog(wid, "-", "claim.redis.free", cell=cell)
     finally:
         _free_claim_local(wid, cell)
 
@@ -620,7 +698,6 @@ async def _seed_staleness_zset(session: AsyncSession, wid: str) -> None:
     r = await _get_redis()
     zkey = _r_key_stale_zset(wid)
 
-    # Берём агрегат одной SQL
     rows = await session.execute(
         select(
             Product.current_row.label("row"),
@@ -633,7 +710,6 @@ async def _seed_staleness_zset(session: AsyncSession, wid: str) -> None:
 
     pipe = r.pipeline()
     pipe.delete(zkey)
-    # batched ZADD
     cnt = 0
     for row, shelf_str, min_scan_at in rows.all():
         x = shelf_str_to_num(shelf_str)
@@ -660,7 +736,6 @@ async def _zrange_oldest_cells(wid: str, limit: int = 256) -> List[Tuple[int, in
         return []
     r = await _get_redis()
     zkey = _r_key_stale_zset(wid)
-    # ZRANGE ... WITHSCORES (decode_responses=True)
     data = await r.zrange(zkey, 0, max(0, limit - 1), withscores=True)
     out: List[Tuple[int, int, float]] = []
     for member, score in data:
@@ -682,11 +757,9 @@ async def _filter_cells_eligible(
     """
     if not cells:
         return []
-    # Преобразуем в (row, shelf_str)
     rs_pairs: List[Tuple[int, str]] = []
     for (x, y) in cells:
         rs_pairs.append((y, shelf_num_to_str(x)))
-    # tuple_ (row, shelf) IN (...)
     res = await session.execute(
         select(Product.current_row, func.upper(func.trim(Product.current_shelf)))
         .where(
@@ -703,19 +776,24 @@ async def _filter_cells_eligible(
             out.append((x, y))
     return out
 
-# legacy (fallback) — полный обход (редко, при пустом ZSET)
+# legacy (fallback) — полный обход (редко, при пустом ZSET), теперь с ORDER BY min(last_scanned_at)
 async def _eligible_cells(session: AsyncSession, wid: str, cutoff: datetime) -> List[Tuple[int, int]]:
     rows = await session.execute(
-        select(Product.current_row, func.upper(func.trim(Product.current_shelf)))
+        select(
+            Product.current_row,
+            func.upper(func.trim(Product.current_shelf)).label("shelf"),
+            func.min(func.coalesce(Product.last_scanned_at, EPOCH)).label("min_scan")
+        )
         .where(
             Product.warehouse_id == wid,
             func.upper(func.trim(Product.current_shelf)) != "0",
             (Product.last_scanned_at.is_(None)) | (Product.last_scanned_at < cutoff),
         )
-        .distinct()
+        .group_by(Product.current_row, func.upper(func.trim(Product.current_shelf)))
+        .order_by(func.min(func.coalesce(Product.last_scanned_at, EPOCH)).asc())
     )
     out: List[Tuple[int, int]] = []
-    for y_int, shelf_str in rows.all():
+    for y_int, shelf_str, _min_scan in rows.all():
         x = shelf_str_to_num(shelf_str)
         y = int(y_int or 0)
         if 1 <= x <= FIELD_X and 0 <= y < FIELD_Y:
@@ -754,6 +832,7 @@ async def _start_scan(session: AsyncSession, robot: Robot, x: int, y: int) -> No
     _SCANNING_STARTED_AT[robot.id] = now
     _SCANNING_UNTIL[robot.id] = now + SCAN_DURATION
     _SCANNING_BATT_LAST_AT[robot.id] = now
+    _glog(robot.warehouse_id, robot.id, "scan.start", cell=(x, y))
     _update_wh_snapshot_from_robot(robot)
 
 async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
@@ -767,6 +846,7 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
         await _free_claim_global(robot.warehouse_id, (rx, ry))
         await set_status(session, robot, "idle")
         await _emit_last_scans(session, robot.warehouse_id, robot.id, reason="no_valid_shelf")
+        _glog(robot.warehouse_id, robot.id, "scan.finish", cell=(rx, ry), products=0, reason="no_valid_shelf")
         return
 
     now_dt = datetime.now(timezone.utc)
@@ -777,8 +857,8 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
         await _free_claim_global(robot.warehouse_id, (rx, ry))
         await set_status(session, robot, "idle")
         await _emit_last_scans(session, robot.warehouse_id, robot.id, reason="under_cooldown")
-        # Даже если «нечего сканить», мы обновляем «давность» на текущий момент — чтобы клетка не болталась в топе.
         await _update_staleness_cell(robot.warehouse_id, rx, ry, now_dt.timestamp())
+        _glog(robot.warehouse_id, robot.id, "scan.finish", cell=(rx, ry), products=0, reason="under_cooldown")
         return
 
     now_iso = now_dt.isoformat()
@@ -786,7 +866,6 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
     payload_for_cache: List[dict] = []
     ids_update: List[str] = []
 
-    # Минимизируем Python-работу в цикле
     for p in products:
         stock = int(p.stock or 0)
         if p.min_stock is not None and stock < p.min_stock:
@@ -827,11 +906,11 @@ async def _finish_scan(session: AsyncSession, robot: Robot) -> None:
     scans20 = await _get_last_scans(robot.warehouse_id)
     await _emit_last_scans(session, robot.warehouse_id, robot.id, scans_override=scans20)
 
-    # ✨ ОБНОВЛЯЕМ ZSET «давности» — одна операция
     await _update_staleness_cell(robot.warehouse_id, rx, ry, now_dt.timestamp())
 
     await _free_claim_global(robot.warehouse_id, (rx, ry))
     await set_status(session, robot, "idle")
+    _glog(robot.warehouse_id, robot.id, "scan.finish", cell=(rx, ry), products=len(products))
 
 async def _safe_finish_scan(session: AsyncSession, robot: Robot) -> None:
     async with _scan_lock(robot.id):
@@ -898,10 +977,9 @@ def _get_tick_cache(wid: str, tick_id: int) -> dict:
     return c
 
 # =========================
-# 20) Robot tick (optimized)
+# 20) Robot tick (optimized & STRICT oldest-first goal assignment)
 # =========================
 async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[int] = None) -> None:
-    # Single small select — keep hot fields only
     rres = await session.execute(
         select(Robot)
         .options(load_only(
@@ -928,8 +1006,6 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
             _SCANNING_STARTED_AT[robot.id] = now_dt
             _SCANNING_UNTIL[robot.id] = now_dt
             _SCANNING_CELL.setdefault(robot.id, robot_xy(robot))
-        # Списываем батарею во время сканирования и обновляем снапшот,
-        # чтобы robot.positions отражал текущий уровень заряда.
         if _drain_scan_battery(robot, now_dt):
             await session.flush()
             _update_wh_snapshot_from_robot(robot)
@@ -970,61 +1046,94 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
     goal = _TARGETS.get(robot.id)
     low_batt = float(robot.battery_level or 0.0) <= LOW_BATTERY_THRESHOLD
 
-    if low_batt:
-        if goal:
-            await _free_claim_global(wid, goal)
-            _TARGETS.pop(robot.id, None)
-        goal = (DOCK_X, DOCK_Y)
-    else:
-        if goal is not None:
+    # eligibility re-check теперь только «на подлёте»
+    if goal is not None and not low_batt:
+        dist = manhattan(cur, goal)
+        if dist <= 1:
             if not await _cell_still_eligible(session, wid, goal, cutoff):
+                _glog(wid, robot.id, "goal.cancel.ineligible", cell=goal, dist=dist)
                 await _free_claim_global(wid, goal)
                 _TARGETS.pop(robot.id, None)
                 goal = None
+
+    if low_batt:
+        if goal:
+            _glog(wid, robot.id, "goal.drop.low_battery", cell=goal, battery=round(float(robot.battery_level or 0.0), 1))
+            await _free_claim_global(wid, goal)
+            _TARGETS.pop(robot.id, None)
+        goal = nearest_dock(cur)
+        _glog(wid, robot.id, "route.to_dock", from_xy=cur, dock=goal, battery=round(float(robot.battery_level or 0.0), 1))
+    else:
         if goal is None and (tid % IDLE_GOAL_LOOKUP_EVERY == 0):
-            # ✨ NEW: precompute per-tick goals queue ONCE per warehouse (global shared within tick)
+            # ✨ precompute per-tick goals queue ONCE per warehouse (STRICT oldest-first)
             if cache["goals_queue"] is None:
-                # 1) Try Redis ZSET oldest cells (zero-alloc-ish)
-                oldest = await _zrange_oldest_cells(wid, limit=256) or []
-                # Convert to list of (x, y)
-                oldest_cells = [(x, y) for (x, y, _score) in oldest]
-                # Filter by cutoff in ONE SQL (cap to 64 for speed)
-                if oldest_cells:
-                    qcells = oldest_cells[:64]
-                    eligible = await _filter_cells_eligible(session, wid, qcells, cutoff)
-                else:
-                    # Fallback single SQL (rare)
+                if STALE_STRICT_MODE:
+                    # Полный пересчёт: ВСЕ клетки с eligible-товарами, отсортировано по min(last_scanned_at) ASC
                     eligible = await _eligible_cells(session, wid, cutoff)
+                    cache["goals_queue"] = eligible
+                    _glog(wid, robot.id, "queue.strict.init", size=len(eligible), preview=eligible[:8])
+                else:
+                    # Старое поведение с Redis ZSET как ускорителем
+                    oldest = await _zrange_oldest_cells(wid, limit=256) or []
+                    oldest_cells = [(x, y) for (x, y, _score) in oldest]
+                    if oldest_cells:
+                        qcells = oldest_cells[:64]
+                        eligible = await _filter_cells_eligible(session, wid, qcells, cutoff)
+                    else:
+                        eligible = await _eligible_cells(session, wid, cutoff)
+                    cache["goals_queue"] = eligible
+                    _glog(wid, robot.id, "queue.init", size=len(eligible), preview=eligible[:8])
 
-                # Stable order: oldest first; tie-breaker: per robot мы предпочтем ближайшие позже.
-                cache["goals_queue"] = eligible
-
-            # Try to take the best goal from queue considering claims & distance (tie-breaker)
             if cache["goals_queue"]:
                 claimed = _claimed_set(wid)
                 local_sel: Set[Tuple[int, int]] = cache["local_selected"]
 
-                # iterate few items and pick nearest among the first K (micro-heuristic)
-                K = 12
-                candidates = []
-                taken = 0
-                for c in cache["goals_queue"]:
-                    if (not USE_REDIS_CLAIMS and c in claimed) or c in local_sel:
-                        continue
-                    candidates.append(c)
-                    taken += 1
-                    if taken >= K:
+                if STALE_STRICT_MODE:
+                    # ⚖️ STRICT: идём по списку старшинства и берём первую доступную клетку
+                    chosen: Optional[Tuple[int, int]] = None
+                    for c in cache["goals_queue"]:
+                        if (not USE_REDIS_CLAIMS and c in claimed) or c in local_sel:
+                            continue
+                        chosen = c
                         break
 
-                if candidates:
-                    # nearest among candidates
-                    best = None
-                    best_d = None
-                    for c in candidates:
-                        d = manhattan(cur, c)
-                        if best is None or d < (best_d or _BILLION):
-                            best, best_d = c, d
-                    if best is not None:
+                    if chosen is not None:
+                        async with _wh_lock(wid):
+                            cache_now = _get_tick_cache(wid, tid)
+                            local_sel_now: Set[Tuple[int, int]] = cache_now["local_selected"]
+                            if chosen not in local_sel_now:
+                                if await _claim_global(wid, chosen):
+                                    local_sel_now.add(chosen)
+                                    if not USE_REDIS_CLAIMS:
+                                        _claim_local(wid, chosen)
+                                    _TARGETS[robot.id] = chosen
+                                    goal = chosen
+                                    _glog(
+                                        wid, robot.id, "goal.assigned.strict",
+                                        cell=chosen, via=("redis" if USE_REDIS_CLAIMS else "local")
+                                    )
+                                else:
+                                    _glog(wid, robot.id, "goal.claim_conflict.strict", cell=chosen)
+                else:
+                    # Предыдущее поведение: окно Top-K и выбор ближайшей в окне
+                    K = max(1, STALE_PICK_TOPK)
+                    candidates = []
+                    taken = 0
+                    for c in cache["goals_queue"]:
+                        if (not USE_REDIS_CLAIMS and c in claimed) or c in local_sel:
+                            continue
+                        candidates.append(c)
+                        taken += 1
+                        if taken >= K:
+                            break
+
+                    if candidates:
+                        dlist = [{"cell": c, "dist": manhattan(cur, c)} for c in candidates]
+                        best_entry = min(dlist, key=lambda e: e["dist"])
+                        best = tuple(best_entry["cell"])  # type: ignore
+                        best_d = int(best_entry["dist"])
+                        _glog(wid, robot.id, "window.pick", K=K, pos=cur, window=dlist, chosen={"cell": best, "dist": best_d})
+
                         async with _wh_lock(wid):
                             cache_now = _get_tick_cache(wid, tid)
                             local_sel_now: Set[Tuple[int, int]] = cache_now["local_selected"]
@@ -1035,6 +1144,9 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
                                         _claim_local(wid, best)
                                     _TARGETS[robot.id] = best
                                     goal = best
+                                    _glog(wid, robot.id, "goal.assigned", cell=best, dist=best_d, via=("redis" if USE_REDIS_CLAIMS else "local"))
+                                else:
+                                    _glog(wid, robot.id, "goal.claim_conflict", cell=best, dist=best_d)
 
     # 4) Move step
     cur_x, cur_y = cur
@@ -1043,7 +1155,6 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
         nx = cur_x + (1 if tx > cur_x else (-1 if tx < cur_x else 0))
         ny = cur_y if nx != tx else (cur_y + (1 if ty > cur_y else (-1 if ty < cur_y else 0)))
     else:
-        # random small drift but avoid X=0
         cand = [(cur_x + 1, cur_y), (cur_x - 1, cur_y), (cur_x, cur_y + 1), (cur_x, cur_y - 1)]
         valid = [(x, y) for (x, y) in cand if 1 <= x <= FIELD_X and 0 <= y < FIELD_Y]
         if valid:
@@ -1056,28 +1167,35 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
     if moved:
         robot.battery_level = max(0.0, float(robot.battery_level or 0.0) - BATTERY_DROP_PER_STEP)
 
-    # Battery died → dock
     if float(robot.battery_level or 0.0) <= 0.0:
-        set_robot_xy(robot, DOCK_X, DOCK_Y)
+        dx, dy = nearest_dock((cur_x, cur_y))
+        set_robot_xy(robot, dx, dy)
         await set_status(session, robot, "charging")
-        if goal and goal != (DOCK_X, DOCK_Y):
+        if goal and not is_at_any_dock(goal):
             await _free_claim_global(wid, goal)
         _TARGETS.pop(robot.id, None)
         await _emit_position_if_needed(robot)
         await _maybe_emit_positions_snapshot_inmem(wid)
+        _glog(wid, robot.id, "move.to_dock.battery_empty", from_xy=(cur_x, cur_y), to_xy=(dx, dy))
         return
 
     set_robot_xy(robot, nx, ny)
     await set_status(session, robot, "idle")
     await _emit_position_if_needed(robot)
     await _maybe_emit_positions_snapshot_inmem(wid)
+    if goal:
+        _glog(wid, robot.id, "move.step", from_xy=(cur_x, cur_y), to_xy=(nx, ny), goal=goal)
 
-    if (nx, ny) == (DOCK_X, DOCK_Y) and float(robot.battery_level) < 100.0:
+    if goal and (nx, ny) != goal and not low_batt:
+        await _renew_claim_global(wid, goal)
+
+    if is_at_any_dock((nx, ny)) and float(robot.battery_level) < 100.0:
         await set_status(session, robot, "charging")
-        if goal and goal != (DOCK_X, DOCK_Y):
+        if goal and not is_at_any_dock(goal):
             await _free_claim_global(wid, goal)
         _TARGETS.pop(robot.id, None)
         await _maybe_emit_positions_snapshot_inmem(wid)
+        _glog(wid, robot.id, "arrived.dock", at=(nx, ny))
         return
 
     if goal and (nx, ny) == goal:
@@ -1085,6 +1203,7 @@ async def _robot_tick(session: AsyncSession, robot_id: str, tick_id: Optional[in
         if key not in cache["by_cell"]:
             cache["by_cell"][key] = await _eligible_products_in_cell(session, wid, nx, ny, cutoff)
         eligible_now = cache["by_cell"][key]
+        _glog(wid, robot.id, "arrived.goal", cell=goal, eligible=len(eligible_now))
         if eligible_now:
             await _start_scan(session, robot, nx, ny)
         else:
@@ -1391,7 +1510,6 @@ async def _warmup_or_sync_snapshot(session: AsyncSession, wid: str, robot_ids: O
         if changed:
             _WH_SNAPSHOT_VER[wid] = _WH_SNAPSHOT_VER.get(wid, 0) + 1
 
-    # Однократная инициализация ZSET «давности» (без лишних SQL в будущем)
     await _seed_staleness_zset(session, wid)
 
 # =========================

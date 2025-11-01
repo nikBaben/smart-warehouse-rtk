@@ -2,14 +2,13 @@
 name = "myapp"
 version = "0.1.0"
 dependencies = [
-  "aioredis>=2.0",
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
   "pydantic[email]>=2.7",
   "pydantic-settings>=2.2",
   "SQLAlchemy==2.0.36",
   "greenlet==3.0.3",
-  "psycopg[binary]==3.2.1",
+  "psycopg>=3",
   "asyncpg>=0.29",
   "passlib[bcrypt]>=1.7.4",
   "bcrypt<4",

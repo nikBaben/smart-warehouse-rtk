@@ -6,12 +6,14 @@ services:
       POSTGRES_DB: myapp
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+    # ↑ Для dev дадим запас соединений. В prod — лучше PgBouncer, но вы просили без него.
+    command: ["postgres", "-c", "max_connections=300", "-c", "shared_buffers=512MB"]
     ports:
-      - '5433:5432' # внешний порт 5433 → внутренний 5432 (для подключения с хоста)
+      - "5433:5432" # внешний порт 5433 → внутренний 5432 (для подключения с хоста)
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d myapp']
+      test: ["CMD-SHELL", "pg_isready -U postgres -d myapp"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -34,14 +36,22 @@ services:
     env_file:
       - .env
     environment:
-      # единое имя для вашего кода
+      # ── соединение к БД ──────────────────────────────────────────────────────
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/myapp
-      # роль и редис
+
+      # ── Redis: выровняли имя переменной под код ─────────────────────────────
+      REDIS_URL: redis://redis:6379/0
+      REDIS_DSN: redis://redis:6379/0  # оставлено для совместимости
+
+      # ── роль и флаги производительности ─────────────────────────────────────
       APP_ROLE: api
-      USE_REDIS: "1"
-      REDIS_DSN: redis://redis:6379/0
-      SQLALCHEMY_DISABLE_CEXT: "1"     # <<< ОБЯЗАТЕЛЬНО
-      USE_UVLOOP: "0"                  # на всякий случай
+      SQLALCHEMY_DISABLE_CEXT: "0"   # включаем C-расширения (быстрее)
+      USE_UVLOOP: "0"                # в команде ниже явно asyncio/h11
+
+      # ── real-time флаги, если используете стримы/координатор ───────────────
+      USE_REDIS_COORD: "1"
+      USE_REDIS_STREAMS: "1"
+      SEND_ROBOT_POSITION: "1"
     depends_on:
       db:
         condition: service_healthy
@@ -57,9 +67,9 @@ services:
       uvicorn app.main:app
       --host 0.0.0.0 --port 8000
       --proxy-headers
-      --workers 1
-      --loop uvloop
-      --http httptools
+      --workers 2
+      --loop asyncio
+      --http h11
       --timeout-keep-alive 5
     volumes:
       - ./:/app
@@ -77,48 +87,52 @@ services:
     environment:
       # ── соединения БД / Redis ────────────────────────────────────────────────
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/myapp
+      REDIS_URL: redis://redis:6379/0
       REDIS_DSN: redis://redis:6379/0
 
       # ── важные флаги для устойчивости логов/цикла ────────────────────────────
-      PYTHONUNBUFFERED: "1"          # мгновенная печать логов
-      PYTHONFAULTHANDLER: "1"        # stack traces при крэшах
-      USE_UVLOOP: "0"                # быстрее event loop, если доступен
-      SQLALCHEMY_DISABLE_CEXT: "1"
+      PYTHONUNBUFFERED: "1"
+      PYTHONFAULTHANDLER: "1"
+      USE_UVLOOP: "0"
+      SQLALCHEMY_DISABLE_CEXT: "0"
 
-      # ── параметры эмулятора (можно подстроить) ──────────────────────────────
-      ROBOT_TICK_INTERVAL: "0.5"     # чем меньше, тем «плавнее» (напр. 0.25)
+      # ── параметры эмулятора ──────────────────────────────────────────────────
+      ROBOT_TICK_INTERVAL: "0.5"
       POSITION_RATE_LIMIT_SEC: "0.25"
       RESCAN_COOLDOWN_SEC: "30"
       SCAN_DURATION_SEC: "6"
 
-      # ── пул SQLAlchemy для воркера (ИМЕННО ЭТИ используются кодом) ───────────
-      DB_POOL_SIZE: "40"
-      DB_MAX_OVERFLOW: "80"
+      # ── пул SQLAlchemy для воркера ───────────────────────────────────────────
+      DB_POOL_SIZE: "15"
+      DB_MAX_OVERFLOW: "15"
+      DB_POOL_TIMEOUT: "8"
+      DB_POOL_PRE_PING: "1"
+      DB_POOL_RECYCLE_SEC: "120"
 
-      # ⚠ Эти переменные в текущем коде НЕ используются (можешь удалить),
-      # оставляю, чтобы не ломать окружение:
+      # ── real-time флаги ─────────────────────────────────────────────────────
+      USE_REDIS_COORD: "1"
+      USE_REDIS_STREAMS: "1"
+      SEND_ROBOT_POSITION: "1"
+
+      # ⚠ Эти переменные вашим текущим кодом могут не использоваться
       ROBOT_POOL_SIZE: "300"
       ROBOT_MAX_OVERFLOW: "600"
       ROBOT_POOL_TIMEOUT: "30.0"
       ROBOT_CONCURRENCY: "10"
-
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-
     command: python -m app.workers.runner
-
     volumes:
       - ./:/app
-
     healthcheck:
       test: ["CMD", "python", "-c", "print('ok')"]
       interval: 15s
       timeout: 5s
       retries: 3
-      
+
   scheduler:
     build: .
     container_name: myapp-scheduler
@@ -128,15 +142,13 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/myapp
-      SQLALCHEMY_DISABLE_CEXT: "1"
-      # как часто запускать джоб (секунды). По умолчанию 600 (=10 минут)
+      SQLALCHEMY_DISABLE_CEXT: "0"
       SCHEDULER_INTERVAL_SEC: "600"
-      # сколько заказывать единиц на строку отгрузки (по умолчанию 1)
       SHIPMENT_ITEM_QTY: "1"
-      # суффикс имени отправки (для наглядности)
       SHIPMENT_NAME_PREFIX: "Auto shipment"
-      # статус новой отправки (если у вас Enum — см. app.models.enums.ShipmentStatus)
       SHIPMENT_STATUS: "scheduled"
+      REDIS_URL: redis://redis:6379/0
+      REDIS_DSN: redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy
@@ -145,7 +157,6 @@ services:
     command: python -m app.scheduler.main
     volumes:
       - ./:/app
-
 
   # --- База данных для Keycloak ---
   keycloak-db:
@@ -156,11 +167,11 @@ services:
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD: keycloak
     ports:
-      - '5432:5432'
+      - "5432:5432"
     volumes:
       - keycloak_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U keycloak -d keycloak_db']
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak_db"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -180,13 +191,29 @@ services:
       keycloak-db:
         condition: service_healthy
     command:
-      - 'start-dev'
-      - '--verbose'
-      #- "--hostname=http://51.250.97.137:8080"
-      - '--http-enabled=true'
-      - '--proxy-headers=xforwarded'
+      - "start-dev"
+      - "--verbose"
+      - "--http-enabled=true"
+      - "--proxy-headers=xforwarded"
     ports:
-      - '8080:8080'
+      - "8080:8080"
+
+  frontend-dev:
+    image: node:20-alpine
+    container_name: myapp-frontend-dev
+    working_dir: /app
+    environment:
+      NODE_ENV: development
+      # ITE_API_URL: https://dev.rtk-smart-warehouse.ru/api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    depends_on:
+      api:
+        condition: service_started
 
   caddy:
     image: caddy:2
@@ -201,6 +228,7 @@ services:
       - caddy_config:/config
     depends_on:
       - api
+      - frontend-dev
 
 volumes:
   pgdata:

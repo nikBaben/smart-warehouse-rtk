@@ -8,6 +8,10 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libpq5 ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 # Установим зависимости
 ENV SQLALCHEMY_DISABLE_CEXT=1
 RUN pip install --no-cache-dir --upgrade pip
