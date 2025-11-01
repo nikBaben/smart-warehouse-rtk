@@ -29,9 +29,75 @@
 
 ## 🏗 Архитектура проекта
 
-<p align="center">
-  <img src="./docs/architecture.png" width="800" alt="System Architecture">
-</p>
+flowchart TB
+    %% Пользователи
+    subgraph CLIENT["🌐 Клиентская часть"]
+        U[👤 Пользователь]
+        FE[🖥️ Frontend (React/Vue)]
+        U --> FE
+    end
+
+    %% Реверс-прокси
+    subgraph PROXY["🔁 Reverse Proxy Layer"]
+        Caddy[Caddy Server<br/>TLS / Proxy / Routing]
+    end
+
+    %% Backend Layer
+    subgraph BACKEND["⚙️ Backend Layer (FastAPI services)"]
+        API[🚀 FastAPI API<br/>Основной сервис]
+        EMU[🧩 Emulator<br/>Обработка команд]
+        SCH[⏰ Scheduler<br/>Фоновые задачи / cron]
+    end
+
+    %% Auth
+    subgraph AUTH["🔐 Аутентификация и безопасность"]
+        KC[🛡️ Keycloak<br/>OAuth2 / OpenID / JWT]
+    end
+
+    %% Infrastructure
+    subgraph INFRA["🗄️ Инфраструктура / Данные"]
+        PG[(🐘 PostgreSQL Database)]
+        REDIS[(🧠 Redis Pub/Sub)]
+    end
+
+    %% Cloud Layer
+    subgraph CLOUD["☁️ Yandex Cloud"]
+        PROXY --> BACKEND
+        PROXY --> AUTH
+        BACKEND --> INFRA
+        AUTH --> PG
+    end
+
+    %% Взаимосвязи
+    FE -->|HTTP/HTTPS| Caddy
+    Caddy -->|Routes / Proxy| API
+    Caddy -->|Static / SPA| FE
+
+    %% API взаимодействия
+    API -->|JWT Validation| KC
+    API -->|SQLAlchemy ORM| PG
+    API -->|Pub/Sub| REDIS
+    EMU -->|Подписка на каналы| REDIS
+    SCH -->|Планировщик задач| API
+
+    %% Emulator взаимодействие
+    EMU -->|Результаты в БД| PG
+
+    %% Keycloak взаимодействие
+    KC -->|User Tokens| API
+    FE -->|OAuth2 Flow / JWT| KC
+
+    %% Docker
+    subgraph DOCKER["🐳 Docker Compose / Containers"]
+        Caddy
+        FE
+        API
+        EMU
+        SCH
+        KC
+        PG
+        REDIS
+    end
 
 **Компоненты проекта:**
 1. **Backend** — API на FastAPI   
