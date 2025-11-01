@@ -101,8 +101,8 @@ export function TrendGraph({
                 label={{
                   value: isSingleDay ? "время" : "дата",
                   position: "insideRight",
-                  dy: -4,
-                  dx: 30,
+                  dy: 6,
+                  dx: 16.5,
                   style: { fontSize: 10, fill: "#000" },
                 }}
                 axisLine={false}

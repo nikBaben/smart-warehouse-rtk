@@ -11,6 +11,8 @@ import { UserAvatar } from '../ui/UserAvatar.tsx';
 import { useInventoryHistory } from "@/hooks/useInventoryHistory.tsx";
 import { useWarehouseStore } from '@/store/useWarehouseStore';
 
+import Search from '@atomaro/icons/24/action/Search';
+
 import {
 	Select,
 	SelectContent,
@@ -29,18 +31,18 @@ import Upload from '@atomaro/icons/24/action/Upload';
 
 
 function HistoryPage(){
-  const getStatusColor = (status: string) => {
+  const getStatus = (status: string) => {
     switch (status.toLowerCase()) {
-      case "ok":
-        return "bg-[#0ACB5B]";
-      case "низкий остаток":
-        return "bg-[#FDA610]";
-      case "критично":
-        return "bg-[#FF2626]";
-      default:
-        return "bg-gray-400";
+        case "ok":
+        return { color: "bg-[#0ACB5B]", label: "ОК" };
+        case "low":
+        return { color: "bg-[#FDA610]", label: "Низкий остаток" };
+        case "critical":
+        return { color: "bg-[#FF2626]", label: "Критично" };
+        default:
+        return { color: "bg-gray-400", label: "Неизвестно" };
     }
-  };
+    };
 
   const [search, setSearch] = useState("");
   const [selectedZone, setSelectedZone] = useState<string[]>([]);
@@ -159,19 +161,20 @@ function HistoryPage(){
     },
     { header: "расхождение (+/-)", accessor: "deviation", sortable: true },
     {
-      header: "статус",
-      accessor: (row) => (
-        <span
-          className={`${getStatusColor(
-            row.status
-          )} text-black text-[10px] font-light rounded-[5px] px-[4px] py-[2px]`}
-        >
-          {row.status}
-        </span>
-      ),
-      align: "left",
-      sortable: true,
-      sortKey: "status",
+        header: "статус",
+        accessor: (row) => {
+            const status = getStatus(row.status); // возвращает { color, label }
+            return (
+            <span
+                className={`${status.color} text-black text-[10px] font-medium rounded-[5px] px-[4px] py-[2px]`}
+            >
+                {status.label}
+            </span>
+            );
+        },
+        align: "left",
+        sortable: true,
+        sortKey: "status",
     },
   ];
 
@@ -221,6 +224,7 @@ function HistoryPage(){
 								onValueChange={id => {
 									const wh = warehouses.find(w => w.id === id) || null
 									setSelectedWarehouse(wh)
+                                    resetFilters()
 								}}
 							>
 								<SelectTrigger className='select-warehouse'>
@@ -307,8 +311,8 @@ function HistoryPage(){
                                                     </div>
                                                     <div className="flex gap-[2px] items-center">
                                                         <Checkbox 
-                                                        checked={selectedStatuses.includes("OK")}
-                                                        onCheckedChange={() => toggleStatus("OK")}
+                                                        checked={selectedStatuses.includes("ok")}
+                                                        onCheckedChange={() => toggleStatus("ok")}
                                                         className="history-checkbox cursor-pointer"/> 
                                                         <span className="text-[#000000] text-[12px]">
                                                             ок
@@ -318,8 +322,8 @@ function HistoryPage(){
                                                 <div className="flex items-center gap-[5px]">
                                                     <div className="flex gap-[2px] items-center">
                                                         <Checkbox 
-                                                        checked={selectedStatuses.includes("низкий остаток")} 
-                                                        onCheckedChange={() => toggleStatus("низкий остаток")}
+                                                        checked={selectedStatuses.includes("low")} 
+                                                        onCheckedChange={() => toggleStatus("low")}
                                                         className="history-checkbox cursor-pointer"/> 
                                                         <span className="text-[#000000] text-[12px]">
                                                             низкий остаток
@@ -327,8 +331,8 @@ function HistoryPage(){
                                                     </div>
                                                     <div className="flex gap-[2px]  items-center">
                                                         <Checkbox 
-                                                        checked={selectedStatuses.includes("критично")} 
-                                                        onCheckedChange={() => toggleStatus("критично")}
+                                                        checked={selectedStatuses.includes("critical")} 
+                                                        onCheckedChange={() => toggleStatus("critical")}
                                                         className="history-checkbox cursor-pointer"/> 
                                                         <span className="text-[#000000] text-[12px]">
                                                             критично
@@ -338,11 +342,11 @@ function HistoryPage(){
                                             </div>
                                         </div>
                                         <div className="flex h-[18px] w-[198px] gap-[4px]">
-                                            <Button onClick={resetFilters} className="bg-[#FF4F12] text-[10px] text-white h-[18px] w-[97px]">
+                                            <Button onClick={resetFilters} className="bg-[#FF4F12] text-[10px] hover:bg-[#e4420d] text-white h-[18px] w-[97px]">
                                                 <CloseLarge fill="#FFFFFF"className="w-[7px] h-[7px]"/>
                                                 Cбросить
                                             </Button>
-                                            <Button onClick = {applyFilters} className="bg-[#7700FF] text-[10px] text-white h-[18px] w-[97px]">
+                                            <Button onClick = {applyFilters} className="bg-[#7700FF] text-[10px] hover:bg-[#6500d8] text-white h-[18px] w-[97px]">
                                                 <CheckLarge fill="#FFFFFF"className="w-[7px] h-[7px]"/>
                                                 Применить
                                             </Button>
@@ -536,14 +540,12 @@ function HistoryPage(){
                                             const json = await res.json();
                                             const rawData = json.data || {};
 
-                                            // Функция усечения до секунд
                                             const normalizeDate = (iso: string) => {
                                                 const d = new Date(iso);
                                                 d.setMilliseconds(0);
-                                                return d.toISOString(); // формат YYYY-MM-DDTHH:mm:ssZ
+                                                return d.toISOString(); 
                                             };
 
-                                            // Шаг 1 — собираем все возможные метки времени
                                             const allDates = new Set<string>();
                                             Object.values(rawData).forEach((entries: any) => {
                                                 entries.forEach(([dateStr]: [string, number]) =>
@@ -555,14 +557,12 @@ function HistoryPage(){
                                                 (a, b) => new Date(a).getTime() - new Date(b).getTime()
                                             );
 
-                                            // Шаг 2 — создаем таблицу со всеми датами и товарами
                                             const merged: Record<string, any> = {};
                                             const lastKnown: Record<string, number | null> = {};
 
                                             sortedDates.forEach((date) => {
                                                 merged[date] = { date };
                                                 Object.keys(rawData).forEach((product) => {
-                                                // Находим запись с этой датой, если есть
                                                 const entry = (rawData[product] as [string, number][]).find(
                                                     ([d]) => normalizeDate(d) === date
                                                 );
@@ -577,7 +577,6 @@ function HistoryPage(){
                                                 });
                                             });
 
-                                            // Превращаем в массив для Recharts
                                             const formattedData = Object.values(merged);
 
                                             setGraphData(formattedData);
