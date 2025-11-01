@@ -5,7 +5,7 @@ from app.ml.predictor import Predictor
 import os
 from app.service.predict_service import PredictService
 from app.api.deps import get_predict_service
-from app.schemas.predict import PredictRespones
+from app.schemas.predict import PredictResponse
 
 router = APIRouter(prefix="/ml", tags=["ml"])
 
@@ -34,7 +34,7 @@ async def rebuild_and_upsert_depletion(
 
 @router.get(
     "/soon_depleted",
-    response_model=list[PredictRespones],
+    response_model=list[PredictResponse],
     summary="Топ-5 ближайших к исчерпанию товаров по складу",
     )
 async def get_top5_soon_depleted(
